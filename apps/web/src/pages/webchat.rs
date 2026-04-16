@@ -212,7 +212,17 @@ pub fn WebchatPage() -> impl IntoView {
             let service = create_webchat_service(client);
             let user_id = auth_state_send.user.get().as_ref().map(|u| u.id.clone()).unwrap_or_default();
             match service.send_message(&session_id, &content, &user_id).await {
-                Ok(_) => {}
+                Ok(_) => {
+                    // HTTP 发送成功，但保持 is_sending=true 等待 WebSocket 回复
+                    // 如果 WebSocket 长时间无响应，允许 30 秒后自动解除锁定
+                    let chat_state_send = chat_state_send.clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        gloo_timers::future::TimeoutFuture::new(30_000).await;
+                        if chat_state_send.is_sending.get() {
+                            chat_state_send.is_sending.set(false);
+                        }
+                    });
+                }
                 Err(e) => {
                     chat_state_send.set_error(Some(format!("Failed to send: {}", e)));
                     chat_state_send.is_sending.set(false);
