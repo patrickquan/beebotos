@@ -14,78 +14,171 @@ $LogDir = Join-Path $DataDir "logs"
 New-Item -ItemType Directory -Force -Path $RunDir | Out-Null
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
-function Start-Gateway {
-    Write-Host "Starting Gateway on port 8000..."
-    $logFile = Join-Path $LogDir "gateway.log"
-    $proc = Start-Process -FilePath (Join-Path $ScriptDir "beebotos-gateway.exe") `
-        -RedirectStandardOutput $logFile -RedirectStandardError $logFile `
+$Services = @(
+    @{ Name = "gateway"; Binary = "beebotos-gateway.exe"; Port = 8000; Desc = "API Gateway" }
+    @{ Name = "web";     Binary = "web-server.exe";       Port = 8090; Desc = "Web Frontend Server" }
+    @{ Name = "beehub";  Binary = "beehub.exe";           Port = 8080; Desc = "BeeHub Service" }
+)
+
+function Test-IsRunning($name) {
+    $pidFile = Join-Path $RunDir "$name.pid"
+    if (Test-Path $pidFile) {
+        $svcPid = Get-Content $pidFile -Raw
+        $svcPid = $svcPid.Trim()
+        try {
+            $proc = Get-Process -Id $svcPid -ErrorAction SilentlyContinue
+            if ($proc) { return $true }
+        } catch {}
+    }
+    return $false
+}
+
+function Start-ServiceByName($name) {
+    $svc = $Services | Where-Object { $_.Name -eq $name } | Select-Object -First 1
+    if (-not $svc) {
+        Write-Host "Unknown service: $name" -ForegroundColor Red
+        return $false
+    }
+
+    $binaryPath = Join-Path $ScriptDir $svc.Binary
+    if (-not (Test-Path $binaryPath)) {
+        if ($name -eq "beehub") {
+            Write-Host "BeeHub binary not found, skipping."
+            return $true
+        }
+        Write-Host "Binary not found: $binaryPath" -ForegroundColor Red
+        return $false
+    }
+
+    if (Test-IsRunning $name) {
+        $svcPid = (Get-Content (Join-Path $RunDir "$name.pid") -Raw).Trim()
+        Write-Host "$($svc.Desc) is already running (PID: $svcPid)" -ForegroundColor Yellow
+        return $true
+    }
+
+    Write-Host "Starting $($svc.Desc) on port $($svc.Port)..."
+    $logFile = Join-Path $LogDir "$name.log"
+    $errFile = Join-Path $LogDir "$name.err"
+    $pidFile = Join-Path $RunDir "$name.pid"
+    $procArgs = @()
+    if ($name -eq "web") {
+        $procArgs = @("--static-path", ".")
+    }
+    $proc = Start-Process -FilePath $binaryPath -ArgumentList $procArgs `
+        -RedirectStandardOutput $logFile -RedirectStandardError $errFile `
         -PassThru -WindowStyle Hidden
-    $proc.Id | Set-Content (Join-Path $RunDir "gateway.pid") -NoNewline
+    $proc.Id | Set-Content $pidFile -NoNewline
     Start-Sleep -Seconds 1
     try {
         $check = Get-Process -Id $proc.Id -ErrorAction SilentlyContinue
         if ($check) {
-            Write-Host "Gateway started (PID: $($proc.Id))"
+            Write-Host "$($svc.Desc) started (PID: $($proc.Id))" -ForegroundColor Green
+            return $true
         }
-    } catch {
-        Write-Host "Gateway failed to start. Check $logFile"
-    }
+    } catch {}
+    Write-Host "$($svc.Desc) failed to start. Check $logFile and $errFile" -ForegroundColor Red
+    Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
+    return $false
 }
 
-function Start-Web {
-    Write-Host "Starting Web Server on port 8090..."
-    $logFile = Join-Path $LogDir "web.log"
-    $proc = Start-Process -FilePath (Join-Path $ScriptDir "web-server.exe") `
-        -RedirectStandardOutput $logFile -RedirectStandardError $logFile `
-        -PassThru -WindowStyle Hidden
-    $proc.Id | Set-Content (Join-Path $RunDir "web.pid") -NoNewline
-    Start-Sleep -Seconds 1
-    try {
-        $check = Get-Process -Id $proc.Id -ErrorAction SilentlyContinue
-        if ($check) {
-            Write-Host "Web Server started (PID: $($proc.Id))"
-        }
-    } catch {
-        Write-Host "Web Server failed to start. Check $logFile"
-    }
-}
-
-function Start-BeeHub {
-    $beehubPath = Join-Path $ScriptDir "beehub.exe"
-    if (-not (Test-Path $beehubPath)) {
-        Write-Host "BeeHub binary not found, skipping."
+function Stop-ServiceByName($name) {
+    $svc = $Services | Where-Object { $_.Name -eq $name } | Select-Object -First 1
+    if (-not $svc) {
+        Write-Host "Unknown service: $name" -ForegroundColor Red
         return
     }
-    Write-Host "Starting BeeHub on port 8080..."
-    $logFile = Join-Path $LogDir "beehub.log"
-    $proc = Start-Process -FilePath $beehubPath `
-        -RedirectStandardOutput $logFile -RedirectStandardError $logFile `
-        -PassThru -WindowStyle Hidden
-    $proc.Id | Set-Content (Join-Path $RunDir "beehub.pid") -NoNewline
-    Start-Sleep -Seconds 1
+
+    $pidFile = Join-Path $RunDir "$name.pid"
+    if (-not (Test-IsRunning $name)) {
+        Write-Host "$($svc.Desc) is not running" -ForegroundColor Yellow
+        Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
+        return
+    }
+
+    $svcPid = (Get-Content $pidFile -Raw).Trim()
+    Write-Host "Stopping $($svc.Desc) (PID: $svcPid)..." -ForegroundColor Cyan
     try {
-        $check = Get-Process -Id $proc.Id -ErrorAction SilentlyContinue
-        if ($check) {
-            Write-Host "BeeHub started (PID: $($proc.Id))"
-        }
+        Stop-Process -Id $svcPid -Force -ErrorAction Stop
+        Write-Host "$($svc.Desc) stopped" -ForegroundColor Green
     } catch {
-        Write-Host "BeeHub failed to start. Check $logFile"
+        Write-Host "Could not stop $($svc.Desc) gracefully: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+    Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
+}
+
+function Restart-ServiceByName($name) {
+    Stop-ServiceByName $name
+    Start-Sleep -Seconds 1
+    Start-ServiceByName $name | Out-Null
+}
+
+function Show-Status {
+    Write-Host "Service Status" -ForegroundColor Cyan
+    Write-Host "----------------------------------------" -ForegroundColor Cyan
+    Write-Host ("{0,-12} {1,-10} {2,-8} {3}" -f "Service", "Status", "PID", "Port")
+    Write-Host "----------------------------------------"
+    foreach ($svc in $Services) {
+        $pidFile = Join-Path $RunDir "$($svc.Name).pid"
+        if (Test-IsRunning $svc.Name) {
+            $svcPid = (Get-Content $pidFile -Raw).Trim()
+            $line = "{0,-12} {1,-10} {2,-8} {3}" -f $svc.Name, "running", $svcPid, $svc.Port
+            Write-Host $line -ForegroundColor Green
+        } else {
+            $line = "{0,-12} {1,-10} {2,-8} {3}" -f $svc.Name, "stopped", "-", $svc.Port
+            Write-Host $line -ForegroundColor Red
+        }
     }
 }
 
-$target = if ($args.Count -gt 0) { $args[0] } else { "all" }
+$action = if ($args.Count -gt 0) { $args[0] } else { "start" }
+$target = if ($args.Count -gt 1) { $args[1] } else { "all" }
 
-switch ($target) {
-    "gateway" { Start-Gateway }
-    "web" { Start-Web }
-    "beehub" { Start-BeeHub }
-    "all" {
-        Start-Gateway
-        Start-Web
-        Start-BeeHub
+switch ($action) {
+    "start" {
+        switch ($target) {
+            "gateway" { Start-ServiceByName "gateway" | Out-Null }
+            "web"     { Start-ServiceByName "web"     | Out-Null }
+            "beehub"  { Start-ServiceByName "beehub"  | Out-Null }
+            "all" {
+                foreach ($svc in $Services) { Start-ServiceByName $svc.Name | Out-Null }
+            }
+            default {
+                Write-Host "Usage: $($MyInvocation.MyCommand.Name) start [gateway|web|beehub|all]" -ForegroundColor Red
+                exit 1
+            }
+        }
     }
+    "stop" {
+        switch ($target) {
+            "gateway" { Stop-ServiceByName "gateway" }
+            "web"     { Stop-ServiceByName "web" }
+            "beehub"  { Stop-ServiceByName "beehub" }
+            "all" {
+                foreach ($svc in $Services) { Stop-ServiceByName $svc.Name }
+            }
+            default {
+                Write-Host "Usage: $($MyInvocation.MyCommand.Name) stop [gateway|web|beehub|all]" -ForegroundColor Red
+                exit 1
+            }
+        }
+    }
+    "restart" {
+        switch ($target) {
+            "gateway" { Restart-ServiceByName "gateway" }
+            "web"     { Restart-ServiceByName "web" }
+            "beehub"  { Restart-ServiceByName "beehub" }
+            "all" {
+                foreach ($svc in $Services) { Restart-ServiceByName $svc.Name }
+            }
+            default {
+                Write-Host "Usage: $($MyInvocation.MyCommand.Name) restart [gateway|web|beehub|all]" -ForegroundColor Red
+                exit 1
+            }
+        }
+    }
+    "status" { Show-Status }
     default {
-        Write-Host "Usage: $($MyInvocation.MyCommand.Name) [gateway|web|beehub|all]"
+        Write-Host "Usage: $($MyInvocation.MyCommand.Name) [start|stop|restart|status] [gateway|web|beehub|all]" -ForegroundColor Red
         exit 1
     }
 }

@@ -7,7 +7,9 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Resolve-Path (Join-Path $ScriptDir "..")
 $PidDir = Join-Path $ProjectRoot "data\run"
+$LogDir = Join-Path $ProjectRoot "data\logs"
 New-Item -ItemType Directory -Force -Path $PidDir | Out-Null
+New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
 Set-Location $ProjectRoot
 
@@ -34,7 +36,7 @@ $Services = @(
     },
     @{
         Name = "web"
-        BuildCmd = "cargo build --release --lib -p beebotos-web --target wasm32-unknown-unknown; if (`$?) { wasm-pack build --target web --out-dir pkg apps/web/ }; if (`$?) { cargo build --release --bin web-server }"
+        BuildCmd = $null  # handled specially in Build-Service
         Binary = "target\release\web-server.exe"
         Port = 8090
         Desc = "Web Frontend Server"
@@ -73,10 +75,10 @@ function Get-PidFile($name) {
 function Test-IsRunning($name) {
     $pidFile = Get-PidFile $name
     if (Test-Path $pidFile) {
-        $pid = Get-Content $pidFile -Raw
-        $pid = $pid.Trim()
+        $procId = Get-Content $pidFile -Raw
+        $procId = $procId.Trim()
         try {
-            $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
+            $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
             if ($proc) { return $true }
         } catch {}
     }
@@ -91,8 +93,44 @@ function Build-Service($name) {
     Write-Host "Building: $($svc.Desc) ($name)" -ForegroundColor Cyan
     Write-Host "----------------------------------------" -ForegroundColor Cyan
 
-    if (-not $svc.BuildCmd) {
+    if (-not $svc.BuildCmd -and $name -ne "web") {
         Print-Warn "No build command for $name, skipping."
+        return $true
+    }
+
+    # Check for cargo
+    try {
+        $null = Get-Command cargo -ErrorAction Stop
+    } catch {
+        Print-Error "cargo not found in PATH. Please install Rust: https://rustup.rs"
+        return $false
+    }
+
+    # Special handling for web service which has multi-step build
+    if ($name -eq "web") {
+        try {
+            $null = Get-Command wasm-pack -ErrorAction Stop
+        } catch {
+            Print-Error "wasm-pack not found in PATH. Please install it: cargo install wasm-pack"
+            return $false
+        }
+
+        cargo build --release --lib -p beebotos-web --target wasm32-unknown-unknown
+        if ($LASTEXITCODE -ne 0) {
+            Print-Error "Build failed: web - cargo build lib failed (exit $LASTEXITCODE)"
+            return $false
+        }
+        wasm-pack build --target web --out-dir pkg apps/web/
+        if ($LASTEXITCODE -ne 0) {
+            Print-Error "Build failed: web - wasm-pack build failed (exit $LASTEXITCODE)"
+            return $false
+        }
+        cargo build --release --bin web-server
+        if ($LASTEXITCODE -ne 0) {
+            Print-Error "Build failed: web - cargo build web-server failed (exit $LASTEXITCODE)"
+            return $false
+        }
+        Print-Success "Build completed: $name"
         return $true
     }
 
@@ -122,8 +160,8 @@ function Start-Service($name) {
 
     $pidFile = Get-PidFile $name
     if (Test-IsRunning $name) {
-        $pid = (Get-Content $pidFile -Raw).Trim()
-        Print-Warn "$name is already running (PID: $pid)"
+        $procId = (Get-Content $pidFile -Raw).Trim()
+        Print-Warn "$name is already running (PID: $procId)"
         return $true
     }
 
@@ -138,8 +176,19 @@ function Start-Service($name) {
     Print-Info "Binary: $binaryPath"
     Print-Info "Port: $($svc.Port)"
 
-    $logFile = Join-Path $PidDir "$name.log"
-    $proc = Start-Process -FilePath $binaryPath -RedirectStandardOutput $logFile -RedirectStandardError $logFile -PassThru -WindowStyle Hidden
+    $outFile = Join-Path $LogDir "$name.log"
+    $errFile = Join-Path $LogDir "$name.err"
+
+    # web-server needs correct static-path and gateway-url to work properly
+    $startArgs = @{}
+    if ($name -eq "web") {
+        $webStaticPath = Join-Path $ProjectRoot "apps\web"
+        $startArgs["ArgumentList"] = "`"--static-path`" `"$webStaticPath`" `"--gateway-url`" http://localhost:8000"
+        Print-Info "Static path: $webStaticPath"
+        Print-Info "Gateway URL: http://localhost:8000"
+    }
+
+    $proc = Start-Process -FilePath $binaryPath @startArgs -RedirectStandardOutput $outFile -RedirectStandardError $errFile -PassThru -WindowStyle Hidden
     $proc.Id | Set-Content $pidFile -NoNewline
 
     Start-Sleep -Seconds 1
@@ -151,7 +200,7 @@ function Start-Service($name) {
         }
     } catch {}
 
-    Print-Error "$name failed to start. Check $logFile"
+    Print-Error "$name failed to start. Check $outFile"
     Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
     return $false
 }
@@ -164,11 +213,11 @@ function Stop-Service($name) {
         return
     }
 
-    $pid = (Get-Content $pidFile -Raw).Trim()
-    Write-Host "Stopping $name (PID: $pid)..." -ForegroundColor Cyan
+    $procId = (Get-Content $pidFile -Raw).Trim()
+    Write-Host "Stopping $name (PID: $procId)..." -ForegroundColor Cyan
 
     try {
-        Stop-Process -Id $pid -Force -ErrorAction Stop
+        Stop-Process -Id $procId -Force -ErrorAction Stop
         Print-Success "$name stopped"
     } catch {
         Print-Warn "Could not stop $name gracefully: $($_.Exception.Message)"
@@ -208,8 +257,29 @@ function Pack-Release($target = "all") {
         Copy-Item (Join-Path $ProjectRoot "target\release\web-server.exe") $outDir
         $pkgSource = Join-Path $ProjectRoot "apps\web\pkg"
         $pkgDest = Join-Path $outDir "pkg"
+        if (-not (Test-Path $pkgSource)) {
+            Print-Error "Web pkg directory not found: $pkgSource"
+            Print-Info "Please build the web service first: .\scripts\beebotos-dev.ps1 build web"
+            Remove-Item -Recurse -Force $outDir -ErrorAction SilentlyContinue
+            exit 1
+        }
         Get-ChildItem -Path $pkgSource | ForEach-Object {
             Copy-Item -Path $_.FullName -Destination $pkgDest -Recurse -Force
+        }
+        # Copy static web assets (index.html, CSS, favicon)
+        foreach ($asset in @("index.html","favicon.svg")) {
+            $src = Join-Path $ProjectRoot "apps\web\$asset"
+            if (Test-Path $src) {
+                Copy-Item $src $outDir
+            }
+        }
+        # Copy real CSS from style/ directory (root CSS files are redirects)
+        $styleDir = Join-Path $ProjectRoot "apps\web\style"
+        if (Test-Path $styleDir) {
+            Copy-Item -Recurse $styleDir $outDir
+            # Copy actual CSS files to root for index.html references
+            Copy-Item (Join-Path $styleDir "main.css") (Join-Path $outDir "style.css")
+            Copy-Item (Join-Path $styleDir "components.css") (Join-Path $outDir "components.css")
         }
     }
     if ($target -eq "all" -or $target -eq "beehub") {
@@ -245,8 +315,8 @@ function Show-Status {
         }
         $pidFile = Get-PidFile $svc.Name
         if (Test-IsRunning $svc.Name) {
-            $pid = (Get-Content $pidFile -Raw).Trim()
-            $line = "{0,-12} {1,-10} {2,-8} {3}" -f $svc.Name, "running", $pid, $svc.Port
+            $procId = (Get-Content $pidFile -Raw).Trim()
+            $line = "{0,-12} {1,-10} {2,-8} {3}" -f $svc.Name, "running", $procId, $svc.Port
             Write-Host $line -ForegroundColor Green
         } else {
             $line = "{0,-12} {1,-10} {2,-8} {3}" -f $svc.Name, "stopped", "-", $svc.Port
