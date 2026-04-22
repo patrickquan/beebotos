@@ -317,7 +317,7 @@ impl LlmService {
                     base_url: Self::get_base_url(name, &provider_config),
                     api_key: api_key.unwrap_or_default(),
                     default_model: Self::get_model(name, &provider_config),
-                    timeout: std::time::Duration::from_secs(60),
+                    timeout: std::time::Duration::from_secs(90),
                     retry_policy: beebotos_agents::llm::traits::RetryPolicy::default(),
                     mode: beebotos_agents::llm::providers::ProviderMode::Merge,
                 };
@@ -333,7 +333,7 @@ impl LlmService {
                     base_url: Self::get_base_url(name, &provider_config),
                     api_key: api_key.unwrap_or_default(),
                     default_model: Self::get_model(name, &provider_config),
-                    timeout: std::time::Duration::from_secs(60),
+                    timeout: std::time::Duration::from_secs(90),
                     retry_policy: beebotos_agents::llm::traits::RetryPolicy::default(),
                     organization: None,
                 };
@@ -349,7 +349,7 @@ impl LlmService {
                     base_url: Self::get_base_url(name, &provider_config),
                     api_key: api_key.unwrap_or_default(),
                     default_model: Self::get_model(name, &provider_config),
-                    timeout: std::time::Duration::from_secs(60),
+                    timeout: std::time::Duration::from_secs(90),
                     retry_policy: beebotos_agents::llm::traits::RetryPolicy::default(),
                 };
 
@@ -364,7 +364,7 @@ impl LlmService {
                     base_url: Self::get_base_url(name, &provider_config),
                     api_key: api_key.unwrap_or_default(),
                     default_model: Self::get_model(name, &provider_config),
-                    timeout: std::time::Duration::from_secs(60),
+                    timeout: std::time::Duration::from_secs(90),
                     retry_policy: beebotos_agents::llm::traits::RetryPolicy::default(),
                 };
 
@@ -393,7 +393,7 @@ impl LlmService {
                     base_url: Self::get_base_url(name, &provider_config),
                     api_key: api_key.unwrap_or_default(),
                     default_model: Self::get_model(name, &provider_config),
-                    timeout: std::time::Duration::from_secs(60),
+                    timeout: std::time::Duration::from_secs(90),
                     retry_policy: beebotos_agents::llm::traits::RetryPolicy::default(),
                     version: "2023-06-01".to_string(),
                 };

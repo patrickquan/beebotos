@@ -24,6 +24,7 @@ config:
   include_budget_estimate: true
   include_transportation: true
   language: zh-CN
+  planning: auto
 ```
 
 ## Prompt Template

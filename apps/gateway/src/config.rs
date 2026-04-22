@@ -162,7 +162,7 @@ fn default_cooldown_seconds() -> u64 { 60 }
 fn default_default_provider() -> String { "kimi".to_string() }
 fn default_max_tokens() -> u32 { 4096 }
 fn default_system_prompt() -> String { "You are a helpful assistant.".to_string() }
-fn default_request_timeout() -> u64 { 60 }
+fn default_request_timeout() -> u64 { 90 }
 fn default_media_storage_path() -> String { "./data/media".to_string() }
 fn default_max_file_size_mb() -> u32 { 50 }
 fn default_context_window_size() -> usize { 20 }
