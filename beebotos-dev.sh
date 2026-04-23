@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # BeeBotOS Development Manager (Linux/macOS)
-# Usage: ./scripts/beebotos-dev.sh [menu|build|start|stop|restart|run|pack|status] [service|all]
+# Usage: ./beebotos-dev.sh [menu|build|start|stop|restart|run|pack|status] [service|all]
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PROJECT_ROOT="${SCRIPT_DIR}"
 PID_DIR="${PROJECT_ROOT}/data/run"
 mkdir -p "${PID_DIR}"
 
@@ -266,7 +266,7 @@ pack_release() {
     fi
 
     # Copy runner script
-    cp "${PROJECT_ROOT}/scripts/beebotos-run.sh" "${out_dir}/"
+    cp "${PROJECT_ROOT}/beebotos-run.sh" "${out_dir}/"
     chmod +x "${out_dir}/beebotos-run.sh"
 
     # Create archive

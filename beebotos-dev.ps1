@@ -1,11 +1,11 @@
 #!/usr/bin/env pwsh
 # BeeBotOS Development Manager (Windows)
-# Usage: .\scripts\beebotos-dev.ps1 [menu|build|start|stop|restart|run|pack|status] [service|all]
+# Usage: .\beebotos-dev.ps1 [menu|build|start|stop|restart|run|pack|status] [service|all]
 
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ProjectRoot = Resolve-Path (Join-Path $ScriptDir "..")
+$ProjectRoot = Resolve-Path $ScriptDir
 $PidDir = Join-Path $ProjectRoot "data\run"
 $LogDir = Join-Path $ProjectRoot "data\logs"
 New-Item -ItemType Directory -Force -Path $PidDir | Out-Null
@@ -271,7 +271,7 @@ function Pack-Release($target = "all") {
         $pkgDest = Join-Path $outDir "pkg"
         if (-not (Test-Path $pkgSource)) {
             Print-Error "Web pkg directory not found: $pkgSource"
-            Print-Info "Please build the web service first: .\scripts\beebotos-dev.ps1 build web"
+            Print-Info "Please build the web service first: .\beebotos-dev.ps1 build web"
             Remove-Item -Recurse -Force $outDir -ErrorAction SilentlyContinue
             exit 1
         }
@@ -314,7 +314,7 @@ function Pack-Release($target = "all") {
         }
     }
 
-    Copy-Item (Join-Path $ProjectRoot "scripts\beebotos-run.ps1") $outDir
+    Copy-Item (Join-Path $ProjectRoot "beebotos-run.ps1") $outDir
 
     Compress-Archive -Path $outDir -DestinationPath $archive -Force
     Print-Success "Release packed: $archive"
