@@ -181,7 +181,7 @@ impl MessageProcessor {
             })?;
 
         // 5.5 Memory 检索
-        let (memory_context, _direct_answer) = self.build_memory_context(&content, 0).await;
+        let (memory_context, _direct_answer) = self.build_memory_context(&content, &None).await;
 
         // 6. 调用 LLM（注入记忆上下文）
         let llm_response = self.call_llm_with_context(&message, &history, &images, &memory_context).await?;
@@ -375,10 +375,9 @@ impl MessageProcessor {
             })?;
 
         // 6.5 Memory 检索
-        // 🆕 FIX: 先匹配 skill，计算额外 context 长度，再构建 memory_context 以调整 budget
+        // 🆕 FIX: 先匹配 skill，统一在 build_memory_context 内注入 skill prompt 并控制总预算
         let skill_match = self.try_match_skill(&content).await;
-        let extra_context_len = skill_match.as_ref().map_or(0, |(_, _, prompt)| prompt.len());
-        let (mut memory_context, direct_answer) = self.build_memory_context(&content, extra_context_len).await;
+        let (memory_context, direct_answer) = self.build_memory_context(&content, &skill_match).await;
 
         // 🟢 P2 FIX: Memory 精确匹配直接返回，跳过 LLM
         if let Some(answer) = direct_answer {
@@ -396,21 +395,11 @@ impl MessageProcessor {
             return Ok(());
         }
 
-        // 7. 尝试匹配 Skill，并在构造 TaskConfig 前处理 skill 相关注入
-        // 🆕 FIX: skill prompt 直接注入 memory_context，使 llm_chat 也能获得丰富指引
-        // skill_match 已在 build_memory_context 之前计算，用于调整 dynamic budget
+        // 7. 处理 Skill planning 判断
         let mut has_skill_plan = false;
-        if let Some((ref skill_name, _, ref skill_prompt)) = skill_match {
-            if !skill_prompt.is_empty() {
-                memory_context.push_str("\n\n[系统提示：你当前正在使用 ");
-                memory_context.push_str(skill_name);
-                memory_context.push_str(" 技能处理此请求。请遵循以下专业指引]\n");
-                memory_context.push_str(skill_prompt);
-                info!("🎯 Skill prompt injected ({} chars) for '{}'", skill_prompt.len(), skill_name);
-            }
+        if let Some((ref skill_name, _, _)) = skill_match {
             // 复杂 skill 强制触发 agent 端 planning
-            // 🆕 FIX: 只为分析/研究类 skill 强制触发 planning；生成类 skill（travel/writer/email等）
-            // 走一次性 LLM 生成，避免多步 planning 超时且输出质量差。
+            // 🆕 FIX: 结合 skill 类型与 query 复杂度综合判断是否启用 planning
             let skill_lower = skill_name.to_lowercase();
             let is_generative_skill = skill_lower.contains("travel") || skill_lower.contains("planner")
                 || skill_lower.contains("writer") || skill_lower.contains("creator")
@@ -419,9 +408,17 @@ impl MessageProcessor {
             let is_analytical_skill = skill_lower.contains("developer") || skill_lower.contains("analyst")
                 || skill_lower.contains("advisor") || skill_lower.contains("manager")
                 || skill_lower.contains("auditor") || skill_lower.contains("researcher");
+            
+            let query_complexity = Self::estimate_query_complexity(&content);
+            let is_high_complexity = query_complexity == QueryComplexity::High;
+            
             if is_analytical_skill && !is_generative_skill {
                 has_skill_plan = true;
                 info!("🎯 Analytical skill matched, will inject plan=true for '{}'", skill_name);
+            } else if is_generative_skill && is_high_complexity {
+                // 🆕 FIX: 高复杂度 generative skill 也启用 planning
+                has_skill_plan = true;
+                info!("🎯 Generative skill '{}' matched with high complexity query, forcing plan=true", skill_name);
             } else if is_generative_skill {
                 info!("🎯 Generative skill matched, skipping plan=true for '{}' (single-shot generation preferred)", skill_name);
             }
@@ -762,7 +759,7 @@ impl MessageProcessor {
     /// 直接提取答案返回，跳过 LLM 调用。
     ///
     /// 🆕 FIX (方案B): 固定档案与动态记忆分独立预算，简单查询可跳过冗余档案
-    async fn build_memory_context(&self, content: &str, extra_context_len: usize) -> (String, Option<String>) {
+    async fn build_memory_context(&self, content: &str, skill_match: &Option<(String, String, String)>) -> (String, Option<String>) {
         let mut memory_context = String::new();
         let mut direct_answer: Option<String> = None;
 
@@ -776,10 +773,6 @@ impl MessageProcessor {
         let search_limit = if is_complex { 6 } else if char_count > 15 { 4 } else { 2 };
 
         // 🆕 FIX (方案B): 独立预算体系
-        // 简单查询：加载核心用户档案 + 极简人格，system_budget=200
-        // 普通查询：固定档案 600 chars + 动态记忆 800 chars
-        // 复杂查询：固定档案 1000 chars + 动态记忆 1200 chars（避免 USER.md+SOUL.md 被截断）
-        // 🆕 FIX: 独立预算体系
         // 简单查询：固定档案 300 chars + 动态记忆 400 chars
         // 普通查询：固定档案 600 chars + 动态记忆 800 chars
         // 复杂查询：固定档案 1000 chars + 动态记忆 1200 chars
@@ -791,7 +784,17 @@ impl MessageProcessor {
             (600, 800)
         };
         // 🆕 FIX: 当外部注入了大段 skill prompt 等额外 context 时，相应缩减 dynamic memory budget
-        let adjusted_dynamic_budget = dynamic_budget.saturating_sub(extra_context_len).max(200);
+        let extra_context_len = skill_match.as_ref().map_or(0, |(name, _, prompt)| {
+            let wrapper_len = format!("\n\n[系统提示：你当前正在使用 {} 技能处理此请求。请遵循以下专业指引]\n", name).chars().count();
+            prompt.chars().count() + wrapper_len
+        });
+        let adjusted_dynamic_budget = dynamic_budget.saturating_sub(extra_context_len).max(150);
+
+        // 🆕 FIX: 前缀文本长度预扣，确保各段总长度（含前缀）不超预算
+        let system_prefix = "\n\n[系统提示：以下是该用户的固定档案和AI人格设定，回答时必须始终遵守]\n";
+        let dynamic_prefix = "\n\n[系统提示：以下是该用户的历史记忆，回答时必须结合这些信息]\n";
+        let system_context_budget = system_budget.saturating_sub(system_prefix.chars().count());
+        let dynamic_context_budget = adjusted_dynamic_budget.saturating_sub(dynamic_prefix.chars().count());
 
         // 🆕 FIX: 预加载 USER.md 和 SOUL.md 作为固定系统上下文
         if let Some(ref memory) = self.memory_system {
@@ -850,7 +853,7 @@ impl MessageProcessor {
                 if system_context.is_empty() {
                     system_context = "你是 BeeBotOS 的个人 AI 助手，用中文友好地回答用户。\n".to_string();
                 }
-                info!("📄 Simple query mode: loaded minimal persona ({} chars)", system_context.len());
+                info!("📄 Simple query mode: loaded minimal persona ({} chars)", system_context.chars().count());
             } else {
                 // 标准模式：加载 USER.md + SOUL.md
                 // Read USER.md
@@ -927,25 +930,35 @@ impl MessageProcessor {
                 }
             }
 
-            // 🆕 FIX (方案B): 对固定档案做硬截断
+            // 🆕 FIX (方案B): 对固定档案做硬截断（统一字符计数，已预扣前缀长度）
             if !system_context.is_empty() {
-                if system_context.len() > system_budget {
-                    // 安全截断：在字符边界处截断
-                    let mut truncated = String::with_capacity(system_budget);
-                    let mut current_len = 0;
+                let system_chars = system_context.chars().count();
+                if system_chars > system_context_budget {
+                    let suffix = "\n...（档案已精简）\n";
+                    let suffix_len = suffix.chars().count();
+                    let truncate_limit = system_context_budget.saturating_sub(suffix_len);
+                    
+                    let mut truncated = String::new();
+                    let mut char_count = 0;
                     for ch in system_context.chars() {
-                        let ch_len = ch.len_utf8();
-                        if current_len + ch_len > system_budget - 10 {
+                        if char_count >= truncate_limit {
                             break;
                         }
                         truncated.push(ch);
-                        current_len += ch_len;
+                        char_count += 1;
                     }
-                    truncated.push_str("\n...（档案已精简）\n");
+                    truncated.push_str(suffix);
                     system_context = truncated;
-                    info!("📄 System context truncated to {} chars (budget={})", system_context.len(), system_budget);
+                    
+                    debug_assert!(
+                        system_context.chars().count() <= system_context_budget,
+                        "System context truncation failed: {} > {}",
+                        system_context.chars().count(),
+                        system_context_budget
+                    );
+                    info!("📄 System context truncated to {} chars (budget={})", system_context.chars().count(), system_budget);
                 }
-                memory_context.push_str("\n\n[系统提示：以下是该用户的固定档案和AI人格设定，回答时必须始终遵守]\n");
+                memory_context.push_str(system_prefix);
                 memory_context.push_str(&system_context);
             }
 
@@ -961,8 +974,8 @@ impl MessageProcessor {
                             for marker in &["assistant:", "答：", "a:", "回答：", "助手："] {
                                 if let Some(pos) = mem_lower.find(marker) {
                                     let answer = r.entry.content[pos + marker.len()..].trim().to_string();
-                                    if answer.len() > 5 && answer.len() < 500 {
-                                        info!("🧠 P2 MEMORY DIRECT HIT: 精确匹配，直接返回答案 ({} chars)", answer.len());
+                                    if answer.chars().count() > 5 && answer.chars().count() < 500 {
+                                        info!("🧠 P2 MEMORY DIRECT HIT: 精确匹配，直接返回答案 ({} chars)", answer.chars().count());
                                         direct_answer = Some(answer);
                                         break;
                                     }
@@ -979,34 +992,37 @@ impl MessageProcessor {
                         .take(search_limit)
                         .collect();
                     if !filtered.is_empty() {
-                        memory_context.push_str("\n\n[系统提示：以下是该用户的历史记忆，回答时必须结合这些信息]\n");
-                        // 🆕 FIX (方案B): 动态记忆独立预算，从 0 开始计算
+                        memory_context.push_str(dynamic_prefix);
+                        // 🆕 FIX (方案B): 动态记忆独立预算，从 0 开始计算（已预扣前缀长度）
                         // 🆕 FIX: 单条记忆最多 200 chars，避免一条超长记忆占满 budget
                         const MAX_ENTRY_LEN: usize = 200;
                         let mut total_chars = 0;
                         for r in filtered {
                             let mut entry_text = r.entry.content.clone();
-                            if entry_text.len() > MAX_ENTRY_LEN {
-                                let mut truncated = String::with_capacity(MAX_ENTRY_LEN);
-                                let mut current_len = 0;
+                            let entry_text_chars = entry_text.chars().count();
+                            if entry_text_chars > MAX_ENTRY_LEN {
+                                let mut truncated = String::new();
+                                let mut char_count = 0;
                                 for ch in entry_text.chars() {
-                                    let ch_len = ch.len_utf8();
-                                    if current_len + ch_len > MAX_ENTRY_LEN - 6 { break; }
+                                    if char_count >= MAX_ENTRY_LEN - 3 { // 留 3 字符给 "..."
+                                        break;
+                                    }
                                     truncated.push(ch);
-                                    current_len += ch_len;
+                                    char_count += 1;
                                 }
                                 truncated.push_str("...");
                                 entry_text = truncated;
                             }
                             let entry = format!("- {}\n", entry_text);
-                            if total_chars + entry.len() > adjusted_dynamic_budget {
+                            let entry_chars = entry.chars().count();
+                            if total_chars + entry_chars > dynamic_context_budget {
                                 memory_context.push_str("- ...（更多记忆已省略）\n");
                                 break;
                             }
                             memory_context.push_str(&entry);
-                            total_chars += entry.len();
+                            total_chars += entry_chars;
                         }
-                        info!("Injecting memory context ({} chars, system_budget={}, dynamic_budget={}) into LLM prompt", memory_context.len(), system_budget, adjusted_dynamic_budget);
+                        info!("Injecting memory context ({} chars, system_budget={}, dynamic_budget={}) into LLM prompt", memory_context.chars().count(), system_budget, adjusted_dynamic_budget);
                     } else {
                         info!("All memory results were self-referential, skipping injection");
                     }
@@ -1019,6 +1035,30 @@ impl MessageProcessor {
                 }
             }
         }
+        
+        // 🆕 FIX: 统一注入 skill prompt（无论 memory_system 是否存在）
+        if let Some((ref skill_name, _, ref skill_prompt)) = skill_match {
+            if !skill_prompt.is_empty() {
+                let injection = format!(
+                    "\n\n[系统提示：你当前正在使用 {} 技能处理此请求。请遵循以下专业指引]\n{}",
+                    skill_name, skill_prompt
+                );
+                memory_context.push_str(&injection);
+                info!("🎯 Skill prompt injected ({} chars) for '{}'", skill_prompt.chars().count(), skill_name);
+            }
+        }
+        
+        // 🆕 FIX: 总预算防御性截断
+        let total_budget = system_budget + dynamic_budget;
+        let current_chars = memory_context.chars().count();
+        if current_chars > total_budget {
+            let suffix = "\n...[上下文已精简]\n";
+            let keep_chars = total_budget.saturating_sub(suffix.chars().count());
+            memory_context = Self::truncate_to_chars(&memory_context, keep_chars);
+            memory_context.push_str(suffix);
+            warn!("🎯 Total memory context truncated from {} to {} chars (total_budget={})", current_chars, memory_context.chars().count(), total_budget);
+        }
+        
         (memory_context, direct_answer)
     }
 
@@ -1251,6 +1291,46 @@ impl MessageProcessor {
 
         Ok(())
     }
+
+    /// 🆕 FIX: 按字符截断字符串
+    fn truncate_to_chars(s: &str, limit: usize) -> String {
+        let mut result = String::new();
+        let mut count = 0;
+        for ch in s.chars() {
+            if count >= limit {
+                break;
+            }
+            result.push(ch);
+            count += 1;
+        }
+        result
+    }
+
+    /// 🆕 FIX: 评估查询复杂度
+    fn estimate_query_complexity(query: &str) -> QueryComplexity {
+        let len = query.chars().count();
+        let complex_keywords = ["计划", "规划", "分析", "对比", "步骤", "方案", "周", "预算", "攻略", "安排", "行程"];
+        let keyword_score = complex_keywords.iter().filter(|k| query.contains(**k)).count();
+        
+        if len > 15 || keyword_score >= 2 {
+            QueryComplexity::High
+        } else if len > 8 || keyword_score >= 1 {
+            QueryComplexity::Medium
+        } else {
+            QueryComplexity::Low
+        }
+    }
+}
+
+/// 查询复杂度等级，用于判断 Skill Planning 是否需要启用。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum QueryComplexity {
+    /// 简单短查询，如 "hi"、"你好"
+    Low,
+    /// 中等查询，含一个复杂关键词或长度稍长
+    Medium,
+    /// 复杂查询，含多个关键词或长句，需要多步规划
+    High,
 }
 
 /// 处理后的图片
