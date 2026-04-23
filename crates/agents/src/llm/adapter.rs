@@ -100,9 +100,9 @@ impl LLMCallInterface for LLMClientAdapter {
 pub struct LegacyLLMClientBuilder;
 
 impl LegacyLLMClientBuilder {
-    /// Build from environment (Kimi)
+    /// Build from environment (OpenAI-compatible)
     pub async fn from_env() -> AgentResult<Box<dyn LLMCallInterface>> {
-        let client = crate::llm::create_kimi_client().await
+        let client = crate::llm::create_openai_client().await
             .map_err(|e| crate::error::AgentError::InvalidConfig(e.to_string()))?;
 
         Ok(Box::new(LLMClientAdapter::new(client)))
