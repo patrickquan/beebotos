@@ -8,7 +8,7 @@ use wasm_bindgen::JsCast;
 pub fn BarChart(
     #[prop(into)] labels: Vec<String>,
     #[prop(into)] values: Vec<f64>,
-    title: String,
+    #[prop(into)] title: String,
     #[prop(default = 300)] width: u32,
     #[prop(default = 200)] height: u32,
 ) -> impl IntoView {
@@ -87,7 +87,7 @@ pub fn BarChart(
 pub fn PieChart(
     #[prop(into)] labels: Vec<String>,
     #[prop(into)] values: Vec<f64>,
-    title: String,
+    #[prop(into)] title: String,
     #[prop(default = 250)] width: u32,
     #[prop(default = 250)] height: u32,
 ) -> impl IntoView {
