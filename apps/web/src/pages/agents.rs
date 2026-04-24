@@ -1,5 +1,6 @@
 use crate::api::{AgentInfo, AgentStatus, CreateAgentRequest};
 use crate::components::{ErrorContext, Modal, Pagination, PaginationState, SkeletonGrid};
+use crate::i18n::I18nContext;
 use crate::state::use_app_state;
 use crate::utils::{FormValidator, StringValidators};
 use leptos::prelude::*;
@@ -15,6 +16,9 @@ pub fn AgentsPage() -> impl IntoView {
     let app_state = use_app_state();
     let _error_ctx = expect_context::<ErrorContext>();
     let pagination = RwSignal::new(PaginationState::new(PAGE_SIZE));
+
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
 
     // Use RwSignal with Option for data fetching in CSR mode
     let agents_data: RwSignal<Option<(Vec<AgentInfo>, usize)>> = RwSignal::new(None);
@@ -43,7 +47,7 @@ pub fn AgentsPage() -> impl IntoView {
                     is_loading.set(false);
                 }
                 Err(e) => {
-                    agents_error.set(Some(format!("Failed to load agents: {}", e)));
+                    agents_error.set(Some(format!("{}: {}", i18n_stored.get_value().t("agents-error"), e)));
                     is_loading.set(false);
                 }
             }
@@ -57,18 +61,18 @@ pub fn AgentsPage() -> impl IntoView {
     let fetch_agents_stored = StoredValue::new(fetch_agents);
 
     view! {
-        <Title text="Agents - BeeBotOS" />
+        <Title text={move || format!("{} - BeeBotOS", i18n_stored.get_value().t("agents-title"))} />
         <div class="page agents-page">
             <div class="page-header">
                 <div>
-                    <h1>"Agents"</h1>
-                    <p class="page-description">"Manage your autonomous AI agents"</p>
+                    <h1>{move || i18n_stored.get_value().t("agents-title")}</h1>
+                    <p class="page-description">{move || i18n_stored.get_value().t("agents-subtitle")}</p>
                 </div>
                 <button
                     class="btn btn-primary"
                     on:click=move |_| show_create_modal.set(true)
                 >
-                    "+ New Agent"
+                    {move || format!("+ {}", i18n_stored.get_value().t("agents-create-new"))}
                 </button>
             </div>
 
@@ -173,6 +177,8 @@ fn AgentCard(
     #[prop(optional)] on_status_change: Option<impl Fn() + Clone + 'static>,
 ) -> impl IntoView {
     let app_state = use_app_state();
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
     let status_class = match agent.status {
         AgentStatus::Running => "status-running",
         AgentStatus::Stopped | AgentStatus::Idle => "status-idle",
@@ -210,10 +216,10 @@ fn AgentCard(
 
             <div class="agent-meta">
                 <span class="agent-tasks">
-                    {agent.task_count.map(|t| format!("{} tasks", t)).unwrap_or_else(|| "0 tasks".to_string())}
+                    {agent.task_count.map(|t| format!("{} {}", t, i18n_stored.get_value().t("stats-tasks"))).unwrap_or_else(|| format!("0 {}", i18n_stored.get_value().t("stats-tasks")))}
                 </span>
                 <span class="agent-uptime">
-                    {agent.uptime_percent.map(|u| format!("{:.1}% uptime", u)).unwrap_or_else(|| "N/A".to_string())}
+                    {agent.uptime_percent.map(|u| format!("{:.1}% {}", u, i18n_stored.get_value().t("stats-uptime"))).unwrap_or_else(|| "N/A".to_string())}
                 </span>
             </div>
 
@@ -225,7 +231,7 @@ fn AgentCard(
 
             <div class="agent-actions">
                 <A href=format!("/agents/{}", agent.id) attr:class="btn btn-primary">
-                    "Manage"
+                    {move || i18n_stored.get_value().t("action-manage")}
                 </A>
                 {match agent.status {
                     AgentStatus::Running => {
@@ -246,8 +252,8 @@ fn AgentCard(
                                             Ok(_) => {
                                                 app_state.notify(
                                                     crate::state::notification::NotificationType::Success,
-                                                    "Agent Stopped",
-                                                    format!("Agent {} has been stopped", agent_id)
+                                                    &i18n_stored.get_value().t("notification-agent-stopped"),
+                                                    format!("{} {}", i18n_stored.get_value().t("notification-agent-stopped-desc"), agent_id)
                                                 );
                                                 // Trigger refresh
                                                 if let Some(ref cb) = on_status_change {
@@ -257,8 +263,8 @@ fn AgentCard(
                                             Err(e) => {
                                                 app_state.notify(
                                                     crate::state::notification::NotificationType::Error,
-                                                    "Stop Failed",
-                                                    format!("Failed to stop agent: {}", e)
+                                                    &i18n_stored.get_value().t("notification-stop-failed"),
+                                                    format!("{}: {}", i18n_stored.get_value().t("notification-stop-failed-desc"), e)
                                                 );
                                             }
                                         }
@@ -266,7 +272,7 @@ fn AgentCard(
                                     });
                                 }
                             >
-                                {move || if is_stopping.get() { "Stopping..." } else { "Stop" }}
+                                {move || if is_stopping.get() { i18n_stored.get_value().t("action-stopping") } else { i18n_stored.get_value().t("action-stop") }}
                             </button>
                         }.into_any()
                     }
@@ -288,8 +294,8 @@ fn AgentCard(
                                             Ok(_) => {
                                                 app_state.notify(
                                                     crate::state::notification::NotificationType::Success,
-                                                    "Agent Started",
-                                                    format!("Agent {} has been started", agent_id)
+                                                    &i18n_stored.get_value().t("notification-agent-started"),
+                                                    format!("{} {}", i18n_stored.get_value().t("notification-agent-started-desc"), agent_id)
                                                 );
                                                 // Trigger refresh
                                                 if let Some(ref cb) = on_status_change {
@@ -299,8 +305,8 @@ fn AgentCard(
                                             Err(e) => {
                                                 app_state.notify(
                                                     crate::state::notification::NotificationType::Error,
-                                                    "Start Failed",
-                                                    format!("Failed to start agent: {}", e)
+                                                    &i18n_stored.get_value().t("notification-start-failed"),
+                                                    format!("{}: {}", i18n_stored.get_value().t("notification-start-failed-desc"), e)
                                                 );
                                             }
                                         }
@@ -308,7 +314,7 @@ fn AgentCard(
                                     });
                                 }
                             >
-                                {move || if is_starting.get() { "Starting..." } else { "Start" }}
+                                {move || if is_starting.get() { i18n_stored.get_value().t("action-starting") } else { i18n_stored.get_value().t("action-start") }}
                             </button>
                         }.into_any()
                     }
@@ -327,13 +333,16 @@ fn AgentsLoading() -> impl IntoView {
 
 #[component]
 fn AgentsEmpty() -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     view! {
         <div class="empty-state">
             <div class="empty-icon">"🤖"</div>
-            <h3>"No agents yet"</h3>
-            <p>"Create your first autonomous agent to get started"</p>
+            <h3>{move || i18n_stored.get_value().t("agents-no-agents")}</h3>
+            <p>{move || i18n_stored.get_value().t("agents-create-first")}</p>
             <button class="btn btn-primary" on:click=move |_| {}>
-                "Create Agent"
+                {move || i18n_stored.get_value().t("agents-create-new")}
             </button>
         </div>
     }
@@ -341,20 +350,23 @@ fn AgentsEmpty() -> impl IntoView {
 
 #[component]
 fn AgentsError(#[prop(into)] message: String, on_retry: impl Fn() + 'static) -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     view! {
         <div class="error-state">
             <div class="error-icon">"⚠️"</div>
-            <h3>"Failed to load agents"</h3>
+            <h3>{move || i18n_stored.get_value().t("agents-error")}</h3>
             <p>{message}</p>
             <div class="error-actions">
                 <button class="btn btn-primary" on:click=move |_| on_retry()>
-                    "Retry"
+                    {move || i18n_stored.get_value().t("error-retry")}
                 </button>
                 <button
                     class="btn btn-secondary"
                     on:click=move |_| { let _ = window().location().reload(); }
                 >
-                    "Refresh Page"
+                    {move || i18n_stored.get_value().t("action-refresh-page")}
                 </button>
             </div>
         </div>
@@ -367,6 +379,8 @@ fn CreateAgentModal(
     on_created: impl Fn() + Clone + Send + Sync + 'static,
 ) -> impl IntoView {
     let app_state = use_app_state();
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
     let name = RwSignal::new(String::new());
     let description = RwSignal::new(String::new());
     let model_provider = RwSignal::new(String::from("openai"));
@@ -379,7 +393,7 @@ fn CreateAgentModal(
     let on_created_submit = on_created.clone();
 
     view! {
-        <Modal title="Create New Agent" on_close=move || on_close_modal()>
+        <Modal title=i18n_stored.get_value().t("modal-create-agent-title") on_close=move || on_close_modal()>
             <form on:submit={
                 move |ev: leptos::ev::SubmitEvent| {
                     ev.prevent_default();
@@ -416,10 +430,10 @@ fn CreateAgentModal(
                 <div class="modal-body">
                     <div class=move || format!("form-group {}",
                         if validator.get().has_error("name") { "has-error" } else { "" })>
-                        <label>"Agent Name *"</label>
+                        <label>{move || i18n_stored.get_value().t("label-agent-name")}</label>
                         <input
                             type="text"
-                            placeholder="Enter agent name"
+                            placeholder={move || i18n_stored.get_value().t("placeholder-agent-name")}
                             prop:value=name
                             on:input=move |e| {
                                 name.set(event_target_value(&e));
@@ -432,9 +446,9 @@ fn CreateAgentModal(
                     </div>
 
                     <div class="form-group">
-                        <label>"Description"</label>
+                        <label>{move || i18n_stored.get_value().t("label-description")}</label>
                         <textarea
-                            placeholder="Enter agent description"
+                            placeholder={move || i18n_stored.get_value().t("placeholder-agent-description")}
                             prop:value=description
                             on:input=move |e| description.set(event_target_value(&e))
                             rows="3"
@@ -442,7 +456,7 @@ fn CreateAgentModal(
                     </div>
 
                     <div class="form-group">
-                        <label>"Model Provider"</label>
+                        <label>{move || i18n_stored.get_value().t("label-model-provider")}</label>
                         <select
                             prop:value=model_provider
                             on:change=move |e| model_provider.set(event_target_value(&e))
@@ -457,10 +471,10 @@ fn CreateAgentModal(
                     </div>
 
                     <div class="form-group">
-                        <label>"Model Name"</label>
+                        <label>{move || i18n_stored.get_value().t("label-model-name")}</label>
                         <input
                             type="text"
-                            placeholder="e.g. gpt-4, claude-3-opus-20240229"
+                            placeholder={move || i18n_stored.get_value().t("placeholder-model-name")}
                             prop:value=model_name
                             on:input=move |e| model_name.set(event_target_value(&e))
                         />
@@ -468,14 +482,14 @@ fn CreateAgentModal(
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" on:click=move |_| on_close_cancel()>
-                        "Cancel"
+                        {move || i18n_stored.get_value().t("action-cancel")}
                     </button>
                     <button
                         type="submit"
                         class="btn btn-primary"
                         disabled=is_submitting
                     >
-                        {move || if is_submitting.get() { "Creating..." } else { "Create Agent" }}
+                        {move || if is_submitting.get() { i18n_stored.get_value().t("action-creating") } else { i18n_stored.get_value().t("agents-create-new") }}
                     </button>
                 </div>
             </form>

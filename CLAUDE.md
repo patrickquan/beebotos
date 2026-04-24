@@ -47,11 +47,36 @@ cd contracts && forge fmt                          # Format contracts
 
 ### Alternative: Using `just` or `make`
 Both `justfile` and `Makefile` are provided with common recipes:
-- `just build` / `make build` - Release build
-- `just test` / `make test` - Run all tests
-- `just check` / `make check` - Full check (fmt + lint + test)
-- `just dev` / `make dev` - Watch mode with cargo-watch
-- `just lint` / `make lint` - Run clippy
+
+**`just` recipes:**
+- `just build` - Release build
+- `just debug` - Debug build
+- `just test` - Run all tests
+- `just test-filter <PATTERN>` - Run tests matching pattern
+- `just check` - Full check (fmt + lint + test)
+- `just lint` - Run clippy
+- `just fmt` - Format code
+- `just dev` - Watch mode with cargo-watch
+- `just install` - Install CLI binary locally (`beebot`)
+- `just contract-build` / `just contract-test` - Build/test contracts
+- `just clean` - Clean build artifacts
+- `just coverage` - Generate test coverage report (tarpaulin)
+- `just setup` - Run dev environment setup script
+
+**`make` recipes:**
+- `make build` - Release build
+- `make debug` - Debug build
+- `make test` - Run all tests
+- `make test-unit` - Unit tests only
+- `make test-integration` - Integration tests only
+- `make check` - Full check (fmt + lint + test)
+- `make lint` - Run clippy
+- `make fmt` - Format code
+- `make dev` - Watch mode with cargo-watch
+- `make install` / `make uninstall` - Install/remove CLI binary
+- `make contracts-build` / `make contracts-test` - Build/test contracts
+- `make coverage` - Generate test coverage report
+- `make setup` - Run dev environment setup script
 
 ## Workspace Structure
 
@@ -79,7 +104,10 @@ Both `justfile` and `Makefile` are provided with common recipes:
 ### Other Key Directories
 - `contracts/` - Solidity smart contracts (Foundry project)
 - `proto/` - Protocol Buffer definitions (a2a, agent, brain, kernel, etc.)
-- `tests/` - Integration and E2E tests
+- `tests/` - Tests organized by scope:
+  - `tests/unit/` - Unit tests organized by crate (`agents/`, `brain/`, `kernel/`)
+  - `tests/integration/` - Integration tests (`agent_integration.rs`, `kernel_integration.rs`, etc.)
+  - `tests/e2e/` - End-to-end tests (`agent_lifecycle.rs`, `a2a_protocol.rs`, etc.)
 - `config/` - Configuration files (TOML)
 - `skills/` - Skill definitions
 - `docs/` - Documentation
@@ -101,10 +129,11 @@ apps/gateway -> crates/gateway-lib -> crates/core
 
 ### Crate Dependency Direction
 - `core` is the foundation - all crates depend on it
-- `gateway-lib` provides shared infrastructure above `core`
+- `gateway-lib` provides shared infrastructure above `core` and is the only crate that directly depends on `axum`
 - `agents` depends on `kernel`, `chain`, and `gateway-lib`
 - `chain` depends on `agents` (circular dependency note: this exists in current code)
 - Apps depend on crates but crates never depend on apps
+- `agents` must not add `wasmtime` directly — use `kernel::wasm` interfaces instead
 
 ## Code Standards
 
@@ -126,9 +155,11 @@ Types: `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `chore`
 
 ### Git Hooks
 Lefthook is configured (see `lefthook.yml`):
-- **pre-commit**: `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test --lib`
-- **pre-push**: `cargo test --workspace`, `cargo fmt --all --check`
+- **pre-commit**: `cargo fmt -- --check`, `cargo clippy -- -D warnings`, `cargo test --lib`
+- **pre-push**: `cargo test --workspace`, `cargo fmt --all -- --check`
 - **commit-msg**: `commitlint`
+
+Note: pre-commit hooks run without `--workspace` and only match `*.rs` files, so they validate the affected crate rather than the full workspace.
 
 ## Configuration
 
@@ -168,7 +199,7 @@ BEE__CHANNELS__LARK__APP_SECRET=...
 ## Important Implementation Details
 
 ### Kernel (`crates/kernel`)
-- Uses `wasmtime` for WASM runtime (optional feature `wasm`)
+- Uses `wasmtime` for WASM runtime (enabled by default via `wasm` feature; `wasmtime` is an optional dependency)
 - Scheduler supports work-stealing and priority-based scheduling
 - 11 capability levels for security (`CapabilityLevel` enum)
 - TEE support available via `security::tee` module
@@ -180,9 +211,10 @@ BEE__CHANNELS__LARK__APP_SECRET=...
 - Device automation support (Android/iOS controllers)
 - Channel system for multi-platform messaging (Lark, WeChat, Discord, Telegram, Slack)
 - State manager for agent lifecycle tracking
+- WASM execution must go through `kernel::wasm` interfaces; do not add `wasmtime` directly to this crate
 
 ### Message Bus
 Unified message bus (`beebotos-message-bus`) used across crates for inter-module communication. Each crate has its own message bus wrapper (e.g., `KernelMessageBus`, `AgentsMessageBus`).
 
 ### Toolchain
-Nightly Rust is required (see `rust-toolchain.toml`). Components: `rustfmt`, `clippy`. Targets include `wasm32-unknown-unknown`.
+Nightly Rust is required (see `rust-toolchain.toml`). Components: `rustfmt`, `clippy`. Targets include `wasm32-unknown-unknown` and Windows targets (`x86_64-pc-windows-gnu`, `x86_64-pc-windows-msvc`).

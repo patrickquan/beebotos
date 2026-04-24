@@ -3,6 +3,7 @@
 //! Create, manage, and execute skill instances bound to agents.
 
 use crate::api::{CreateInstanceRequest, InstanceInfo};
+use crate::i18n::I18nContext;
 use crate::state::use_app_state;
 use leptos::prelude::*;
 use leptos::view;
@@ -16,6 +17,8 @@ pub fn SkillInstancesPage() -> impl IntoView {
     let create_agent_id = RwSignal::new(String::new());
     let is_creating = RwSignal::new(false);
     let is_executing = RwSignal::new(None::<String>);
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
 
     // Fetch instances
     let instances = LocalResource::new({
@@ -40,14 +43,15 @@ pub fn SkillInstancesPage() -> impl IntoView {
     let create_instance = {
         let app_state = app_state.clone();
         let reload = reload_instances.clone();
+        let i18n = i18n_stored.clone();
         move || {
             let skill_id = create_skill_id.get();
             let agent_id = create_agent_id.get();
             if skill_id.is_empty() || agent_id.is_empty() {
                 app_state.notify(
                     crate::state::notification::NotificationType::Warning,
-                    "Missing Fields",
-                    "Please fill in both Skill ID and Agent ID",
+                    i18n.get_value().t("instances-missing-fields-title"),
+                    i18n.get_value().t("instances-missing-fields-msg"),
                 );
                 return;
             }
@@ -55,6 +59,7 @@ pub fn SkillInstancesPage() -> impl IntoView {
             let service = app_state.skill_service();
             let app_state = app_state.clone();
             let reload = reload.clone();
+            let i18n = i18n.clone();
             leptos::task::spawn_local(async move {
                 let req = CreateInstanceRequest {
                     skill_id,
@@ -65,8 +70,8 @@ pub fn SkillInstancesPage() -> impl IntoView {
                     Ok(instance) => {
                         app_state.notify(
                             crate::state::notification::NotificationType::Success,
-                            "Instance Created",
-                            format!("Instance {} created successfully", instance.instance_id),
+                            i18n.get_value().t("instances-create-success-title"),
+                            format!("{} {}", instance.instance_id, i18n.get_value().t("instances-create-success-msg")),
                         );
                         create_skill_id.set(String::new());
                         create_agent_id.set(String::new());
@@ -76,8 +81,8 @@ pub fn SkillInstancesPage() -> impl IntoView {
                     Err(e) => {
                         app_state.notify(
                             crate::state::notification::NotificationType::Error,
-                            "Creation Failed",
-                            format!("Failed to create instance: {}", e),
+                            i18n.get_value().t("instances-create-fail-title"),
+                            format!("{}: {}", i18n.get_value().t("instances-create-fail-msg"), e),
                         );
                     }
                 }
@@ -90,25 +95,27 @@ pub fn SkillInstancesPage() -> impl IntoView {
     let delete_instance = {
         let app_state = app_state.clone();
         let reload = reload_instances.clone();
+        let i18n = i18n_stored.clone();
         move |instance_id: String| {
             let service = app_state.skill_service();
             let app_state = app_state.clone();
             let reload = reload.clone();
+            let i18n = i18n.clone();
             leptos::task::spawn_local(async move {
                 match service.delete_instance(&instance_id).await {
                     Ok(()) => {
                         app_state.notify(
                             crate::state::notification::NotificationType::Success,
-                            "Instance Deleted",
-                            format!("Instance {} deleted", instance_id),
+                            i18n.get_value().t("instances-delete-success-title"),
+                            format!("{} {}", instance_id, i18n.get_value().t("instances-delete-success-msg")),
                         );
                         reload();
                     }
                     Err(e) => {
                         app_state.notify(
                             crate::state::notification::NotificationType::Error,
-                            "Delete Failed",
-                            format!("Failed to delete instance: {}", e),
+                            i18n.get_value().t("instances-delete-fail-title"),
+                            format!("{}: {}", i18n.get_value().t("instances-delete-fail-msg"), e),
                         );
                     }
                 }
@@ -119,29 +126,31 @@ pub fn SkillInstancesPage() -> impl IntoView {
 
     let execute_instance = {
         let app_state = app_state.clone();
+        let i18n = i18n_stored.clone();
         move |instance_id: String| {
             is_executing.set(Some(instance_id.clone()));
             let service = app_state.skill_service();
             let app_state = app_state.clone();
+            let i18n = i18n.clone();
             leptos::task::spawn_local(async move {
                 match service.execute_instance(&instance_id).await {
                     Ok(resp) => {
                         let msg = if resp.success {
-                            format!("Execution completed in {}ms", resp.execution_time_ms)
+                            format!("{} {}ms", i18n.get_value().t("instances-exec-completed"), resp.execution_time_ms)
                         } else {
-                            format!("Execution failed: {}", resp.output)
+                            format!("{}: {}", i18n.get_value().t("instances-exec-failed"), resp.output)
                         };
                         app_state.notify(
                             crate::state::notification::NotificationType::Success,
-                            "Execution Result",
+                            i18n.get_value().t("instances-exec-result-title"),
                             msg,
                         );
                     }
                     Err(e) => {
                         app_state.notify(
                             crate::state::notification::NotificationType::Error,
-                            "Execution Failed",
-                            format!("Failed to execute instance: {}", e),
+                            i18n.get_value().t("instances-exec-fail-title"),
+                            format!("{}: {}", i18n.get_value().t("instances-exec-fail-msg"), e),
                         );
                     }
                 }
@@ -152,39 +161,39 @@ pub fn SkillInstancesPage() -> impl IntoView {
     let execute_instance_cb = StoredValue::new(execute_instance);
 
     view! {
-        <Title text="Skill Instances - BeeBotOS" />
+        <Title text={move || i18n_stored.get_value().t("instances-page-title")} />
         <div class="page skill-instances-page">
             <div class="page-header">
                 <div>
-                    <h1>"Skill Instances"</h1>
-                    <p class="page-description">"Manage skill instances bound to your agents"</p>
+                    <h1>{move || i18n_stored.get_value().t("instances-title")}</h1>
+                    <p class="page-description">{move || i18n_stored.get_value().t("instances-subtitle")}</p>
                 </div>
                 <button
                     class="btn btn-primary"
                     on:click=move |_| show_create_form.update(|v| *v = !*v)
                 >
-                    {move || if show_create_form.get() { "✕ Cancel" } else { "+ New Instance" }}
+                    {move || if show_create_form.get() { i18n_stored.get_value().t("instances-cancel") } else { i18n_stored.get_value().t("instances-new") }}
                 </button>
             </div>
 
             {move || if show_create_form.get() {
                 view! {
                     <div class="create-form card">
-                        <h3>"Create Instance"</h3>
+                        <h3>{move || i18n_stored.get_value().t("instances-create-title")}</h3>
                         <div class="form-group">
-                            <label>"Skill ID"</label>
+                            <label>{move || i18n_stored.get_value().t("instances-skill-id")}</label>
                             <input
                                 type="text"
-                                placeholder="e.g. echo-skill"
+                                placeholder={move || i18n_stored.get_value().t("instances-skill-id-placeholder")}
                                 prop:value=create_skill_id
                                 on:input=move |e| create_skill_id.set(event_target_value(&e))
                             />
                         </div>
                         <div class="form-group">
-                            <label>"Agent ID"</label>
+                            <label>{move || i18n_stored.get_value().t("instances-agent-id")}</label>
                             <input
                                 type="text"
-                                placeholder="e.g. agent-001"
+                                placeholder={move || i18n_stored.get_value().t("instances-agent-id-placeholder")}
                                 prop:value=create_agent_id
                                 on:input=move |e| create_agent_id.set(event_target_value(&e))
                             />
@@ -194,7 +203,7 @@ pub fn SkillInstancesPage() -> impl IntoView {
                             disabled=move || is_creating.get()
                             on:click=move |_| create_instance_cb.with_value(|f| f())
                         >
-                            {move || if is_creating.get() { "Creating..." } else { "Create Instance" }}
+                            {move || if is_creating.get() { i18n_stored.get_value().t("instances-creating") } else { i18n_stored.get_value().t("instances-create-btn") }}
                         </button>
                     </div>
                 }.into_any()
@@ -208,7 +217,7 @@ pub fn SkillInstancesPage() -> impl IntoView {
                         match instances.await {
                             Ok(data) => {
                                 if data.is_empty() {
-                                    view! { <InstancesEmpty/> }.into_any()
+                                    view! { <InstancesEmpty i18n=i18n_stored.get_value()/> }.into_any()
                                 } else {
                                     view! {
                                         <InstancesTable
@@ -216,11 +225,12 @@ pub fn SkillInstancesPage() -> impl IntoView {
                                             on_delete=move |id| delete_instance_cb.with_value(|f| f(id))
                                             on_execute=move |id| execute_instance_cb.with_value(|f| f(id))
                                             executing_id=is_executing.clone()
+                                            i18n=i18n_stored.get_value()
                                         />
                                     }.into_any()
                                 }
                             }
-                            Err(e) => view! { <InstancesError message=e.to_string()/> }.into_any(),
+                            Err(e) => view! { <InstancesError message=e.to_string() i18n=i18n_stored.get_value()/> }.into_any(),
                         }
                     })
                 }}
@@ -235,18 +245,20 @@ fn InstancesTable(
     on_delete: impl Fn(String) + Clone + Send + Sync + 'static,
     on_execute: impl Fn(String) + Clone + Send + Sync + 'static,
     executing_id: RwSignal<Option<String>>,
+    i18n: I18nContext,
 ) -> impl IntoView {
+    let i18n_stored = StoredValue::new(i18n);
     view! {
         <div class="instances-table-wrapper">
             <table class="instances-table">
                 <thead>
                     <tr>
-                        <th>"Instance ID"</th>
-                        <th>"Skill"</th>
-                        <th>"Agent"</th>
-                        <th>"Status"</th>
-                        <th>"Usage"</th>
-                        <th>"Actions"</th>
+                        <th>{move || i18n_stored.get_value().t("instances-col-id")}</th>
+                        <th>{move || i18n_stored.get_value().t("instances-col-skill")}</th>
+                        <th>{move || i18n_stored.get_value().t("instances-col-agent")}</th>
+                        <th>{move || i18n_stored.get_value().t("instances-col-status")}</th>
+                        <th>{move || i18n_stored.get_value().t("instances-col-usage")}</th>
+                        <th>{move || i18n_stored.get_value().t("instances-col-actions")}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -266,9 +278,11 @@ fn InstancesTable(
                                 <td><span class=status_class.clone()>{instance.status.clone()}</span></td>
                                 <td>
                                     {format!(
-                                        "{} calls · {}ms avg",
+                                        "{} {} · {}ms {}",
                                         instance.usage.total_calls,
-                                        instance.usage.avg_latency_ms as u64
+                                        i18n_stored.get_value().t("instances-calls"),
+                                        instance.usage.avg_latency_ms as u64,
+                                        i18n_stored.get_value().t("instances-avg")
                                     )}
                                 </td>
                                 <td class="actions">
@@ -281,7 +295,7 @@ fn InstancesTable(
                                             move |_| on_execute(id.clone())
                                         }
                                     >
-                                        {move || if is_exec2() { "Running..." } else { "▶ Run" }}
+                                        {move || if is_exec2() { i18n_stored.get_value().t("instances-running") } else { i18n_stored.get_value().t("instances-run") }}
                                     </button>
                                     <button
                                         class="btn btn-sm btn-danger"
@@ -291,7 +305,7 @@ fn InstancesTable(
                                             move |_| on_delete(id.clone())
                                         }
                                     >
-                                        "Delete"
+                                        {move || i18n_stored.get_value().t("instances-delete")}
                                     </button>
                                 </td>
                             </tr>
@@ -317,22 +331,24 @@ fn InstancesLoading() -> impl IntoView {
 }
 
 #[component]
-fn InstancesEmpty() -> impl IntoView {
+fn InstancesEmpty(i18n: I18nContext) -> impl IntoView {
+    let i18n_stored = StoredValue::new(i18n);
     view! {
         <div class="empty-state">
             <div class="empty-icon">"🤖"</div>
-            <h3>"No instances yet"</h3>
-            <p>"Create a new instance to bind a skill to an agent"</p>
+            <h3>{move || i18n_stored.get_value().t("instances-empty-title")}</h3>
+            <p>{move || i18n_stored.get_value().t("instances-empty-desc")}</p>
         </div>
     }
 }
 
 #[component]
-fn InstancesError(#[prop(into)] message: String) -> impl IntoView {
+fn InstancesError(#[prop(into)] message: String, i18n: I18nContext) -> impl IntoView {
+    let i18n_stored = StoredValue::new(i18n);
     view! {
         <div class="error-state">
             <div class="error-icon">"⚠️"</div>
-            <h3>"Failed to load instances"</h3>
+            <h3>{move || i18n_stored.get_value().t("instances-error-title")}</h3>
             <p>{message}</p>
         </div>
     }

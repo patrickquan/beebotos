@@ -4,6 +4,7 @@
 
 use crate::api::{LlmConfigService, LlmGlobalConfig, LlmMetricsResponse, LlmHealthResponse};
 use crate::components::{BarChart, InlineLoading, InfoItem, PieChart};
+use crate::i18n::I18nContext;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::view;
@@ -16,6 +17,9 @@ pub fn LlmConfigPage() -> impl IntoView {
     let client = crate::api::create_client();
     let llm_service = LlmConfigService::new(client);
     let service_stored = StoredValue::new(llm_service);
+
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
 
     let config: RwSignal<Option<LlmGlobalConfig>> = RwSignal::new(None);
     let metrics: RwSignal<Option<LlmMetricsResponse>> = RwSignal::new(None);
@@ -103,11 +107,11 @@ pub fn LlmConfigPage() -> impl IntoView {
     });
 
     view! {
-        <Title text="LLM Configuration - BeeBotOS" />
+        <Title text={move || format!("{} - BeeBotOS", i18n_stored.get_value().t("llm-config-title"))} />
         <div class="page llm-config-page">
             <div class="page-header">
-                <h1>"LLM Configuration"</h1>
-                <p class="page-description">"Global LLM settings and real-time monitoring"</p>
+                <h1>{move || i18n_stored.get_value().t("llm-config-title")}</h1>
+                <p class="page-description">{move || i18n_stored.get_value().t("llm-config-subtitle")}</p>
             </div>
 
             {move || if loading.get() {
@@ -118,7 +122,7 @@ pub fn LlmConfigPage() -> impl IntoView {
                         <div class="error-icon">"⚠️"</div>
                         <p>{err}</p>
                         <button class="btn btn-primary" on:click=move |_| fetch_stored.get_value()()>
-                            "Retry"
+                            {move || i18n_stored.get_value().t("error-retry")}
                         </button>
                     </div>
                 }.into_any()
@@ -128,16 +132,16 @@ pub fn LlmConfigPage() -> impl IntoView {
                         // Global Config Card
                         {config.get().map(|cfg| view! {
                             <section class="card llm-section">
-                                <h2>"Global Configuration"</h2>
+                                <h2>{move || i18n_stored.get_value().t("llm-global-config")}</h2>
                                 <div class="info-grid">
-                                    <InfoItem class="info-row" label="Default Provider" value=cfg.default_provider />
-                                    <InfoItem class="info-row" label="Max Tokens" value=cfg.max_tokens.to_string() />
-                                    <InfoItem class="info-row" label="Request Timeout" value=format!("{}s", cfg.request_timeout) />
-                                    <InfoItem class="info-row" label="Cost Optimization" value=if cfg.cost_optimization { "Enabled" } else { "Disabled" }.to_string() />
-                                    <InfoItem class="info-row" label="Fallback Chain" value=cfg.fallback_chain.join(", ") />
+                                    <InfoItem class="info-row" label=i18n_stored.get_value().t("llm-default-provider") value=cfg.default_provider />
+                                    <InfoItem class="info-row" label=i18n_stored.get_value().t("llm-max-tokens") value=cfg.max_tokens.to_string() />
+                                    <InfoItem class="info-row" label=i18n_stored.get_value().t("llm-request-timeout") value=format!("{}s", cfg.request_timeout) />
+                                    <InfoItem class="info-row" label=i18n_stored.get_value().t("llm-cost-optimization") value=if cfg.cost_optimization { i18n_stored.get_value().t("llm-enabled") } else { i18n_stored.get_value().t("llm-disabled") }.to_string() />
+                                    <InfoItem class="info-row" label=i18n_stored.get_value().t("llm-fallback-chain") value=cfg.fallback_chain.join(", ") />
                                 </div>
                                 <div class="form-group">
-                                    <label>"System Prompt"</label>
+                                    <label>{move || i18n_stored.get_value().t("llm-system-prompt")}</label>
                                     <textarea readonly class="system-prompt">{cfg.system_prompt}</textarea>
                                 </div>
                             </section>
@@ -146,7 +150,7 @@ pub fn LlmConfigPage() -> impl IntoView {
                         // Provider Cards
                         {config.get().map(|cfg| view! {
                             <section class="card llm-section">
-                                <h2>"Providers"</h2>
+                                <h2>{move || i18n_stored.get_value().t("llm-providers")}</h2>
                                 <div class="provider-cards">
                                     {cfg.providers.into_iter().map(|p| {
                                         let health_status = health.get()
@@ -157,16 +161,16 @@ pub fn LlmConfigPage() -> impl IntoView {
                                                     <h3>{p.name.clone()}</h3>
                                                     {health_status.map(|h| view! {
                                                         <span class=format!("health-badge {}", if h.healthy { "healthy" } else { "unhealthy" })>
-                                                            {if h.healthy { "● Healthy".to_string() } else { format!("● {} failures", h.consecutive_failures) }}
+                                                            {if h.healthy { format!("● {}", i18n_stored.get_value().t("llm-healthy")) } else { format!("● {} {}", h.consecutive_failures, i18n_stored.get_value().t("llm-failures")) }}
                                                         </span>
                                                     })}
                                                 </div>
                                                 <div class="info-grid">
-                                                    <InfoItem class="info-row" label="Model" value=p.model />
-                                                    <InfoItem class="info-row" label="Base URL" value=p.base_url />
-                                                    <InfoItem class="info-row" label="API Key" value=p.api_key_masked />
-                                                    <InfoItem class="info-row" label="Temperature" value=format!("{:.2}", p.temperature) />
-                                                    <InfoItem class="info-row" label="Context Window" value=p.context_window.map(|c| c.to_string()).unwrap_or_else(|| "Default".to_string()) />
+                                                    <InfoItem class="info-row" label=i18n_stored.get_value().t("llm-model") value=p.model />
+                                                    <InfoItem class="info-row" label=i18n_stored.get_value().t("llm-base-url") value=p.base_url />
+                                                    <InfoItem class="info-row" label=i18n_stored.get_value().t("llm-api-key") value=p.api_key_masked />
+                                                    <InfoItem class="info-row" label=i18n_stored.get_value().t("llm-temperature") value=format!("{:.2}", p.temperature) />
+                                                    <InfoItem class="info-row" label=i18n_stored.get_value().t("llm-context-window") value=p.context_window.map(|c| c.to_string()).unwrap_or_else(|| i18n_stored.get_value().t("llm-default")) />
                                                 </div>
                                             </div>
                                         }
@@ -178,53 +182,53 @@ pub fn LlmConfigPage() -> impl IntoView {
                         // Metrics Card
                         {metrics.get().map(|m| view! {
                             <section class="card llm-section">
-                                <h2>"Real-time Metrics"</h2>
-                                <p class="timestamp">{format!("Last updated: {}", m.timestamp)}</p>
+                                <h2>{move || i18n_stored.get_value().t("llm-realtime-metrics")}</h2>
+                                <p class="timestamp">{format!("{}: {}", i18n_stored.get_value().t("llm-last-updated"), m.timestamp)}</p>
                                 <div class="metrics-grid">
                                     <MetricCard
-                                        label="Total Requests"
+                                        label=i18n_stored.get_value().t("llm-total-requests")
                                         value=m.summary.total_requests.to_string()
-                                        delta=Some(format!("{:.1}% success", m.summary.success_rate_percent))
+                                        delta=Some(format!("{:.1}% {}", m.summary.success_rate_percent, i18n_stored.get_value().t("llm-success-rate")))
                                     />
                                     <MetricCard
-                                        label="Successful"
+                                        label=i18n_stored.get_value().t("llm-successful")
                                         value=m.summary.successful_requests.to_string()
                                         delta=None
                                     />
                                     <MetricCard
-                                        label="Failed"
+                                        label=i18n_stored.get_value().t("llm-failed")
                                         value=m.summary.failed_requests.to_string()
                                         delta=None
                                     />
                                     <MetricCard
-                                        label="Total Tokens"
+                                        label=i18n_stored.get_value().t("llm-total-tokens")
                                         value=m.tokens.total_tokens.to_string()
-                                        delta=Some(format!("{} in / {} out", m.tokens.input_tokens, m.tokens.output_tokens))
+                                        delta=Some(format!("{} {} / {} {}", m.tokens.input_tokens, i18n_stored.get_value().t("llm-input"), m.tokens.output_tokens, i18n_stored.get_value().t("llm-output")))
                                     />
                                 </div>
-                                <h3>"Latency"</h3>
+                                <h3>{move || i18n_stored.get_value().t("llm-latency")}</h3>
                                 <div class="latency-bars">
-                                    <LatencyBar label="Avg" value=m.latency.average_ms max=1000.0 />
-                                    <LatencyBar label="P50" value=m.latency.p50_ms max=1000.0 />
-                                    <LatencyBar label="P95" value=m.latency.p95_ms max=1000.0 />
-                                    <LatencyBar label="P99" value=m.latency.p99_ms max=1000.0 />
+                                    <LatencyBar label=i18n_stored.get_value().t("llm-avg") value=m.latency.average_ms max=1000.0 />
+                                    <LatencyBar label=i18n_stored.get_value().t("llm-p50") value=m.latency.p50_ms max=1000.0 />
+                                    <LatencyBar label=i18n_stored.get_value().t("llm-p95") value=m.latency.p95_ms max=1000.0 />
+                                    <LatencyBar label=i18n_stored.get_value().t("llm-p99") value=m.latency.p99_ms max=1000.0 />
                                 </div>
 
-                                <h3>"Visual Overview"</h3>
+                                <h3>{move || i18n_stored.get_value().t("llm-visual-overview")}</h3>
                                 <div class="charts-grid">
                                     <PieChart
-                                        title="Request Distribution"
-                                        labels=vec!["Success".to_string(), "Failed".to_string()]
+                                        title=i18n_stored.get_value().t("llm-request-distribution")
+                                        labels=vec![i18n_stored.get_value().t("llm-success"), i18n_stored.get_value().t("llm-failed")]
                                         values=vec![m.summary.successful_requests as f64, m.summary.failed_requests as f64]
                                     />
                                     <PieChart
-                                        title="Token Usage"
-                                        labels=vec!["Input".to_string(), "Output".to_string()]
+                                        title=i18n_stored.get_value().t("llm-token-usage")
+                                        labels=vec![i18n_stored.get_value().t("llm-input"), i18n_stored.get_value().t("llm-output")]
                                         values=vec![m.tokens.input_tokens as f64, m.tokens.output_tokens as f64]
                                     />
                                     <BarChart
-                                        title="Latency Percentiles (ms)"
-                                        labels=vec!["Avg".to_string(), "P50".to_string(), "P95".to_string(), "P99".to_string()]
+                                        title=i18n_stored.get_value().t("llm-latency-percentiles")
+                                        labels=vec![i18n_stored.get_value().t("llm-avg"), i18n_stored.get_value().t("llm-p50"), i18n_stored.get_value().t("llm-p95"), i18n_stored.get_value().t("llm-p99")]
                                         values=vec![m.latency.average_ms, m.latency.p50_ms, m.latency.p95_ms, m.latency.p99_ms]
                                     />
                                 </div>
@@ -239,7 +243,7 @@ pub fn LlmConfigPage() -> impl IntoView {
 
 #[component]
 fn MetricCard(
-    #[prop(into)] label: String,
+    label: String,
     #[prop(into)] value: String,
     delta: Option<String>,
 ) -> impl IntoView {
@@ -254,7 +258,7 @@ fn MetricCard(
 
 #[component]
 fn LatencyBar(
-    #[prop(into)] label: String,
+    label: String,
     value: f64,
     max: f64,
 ) -> impl IntoView {

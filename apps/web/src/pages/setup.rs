@@ -3,6 +3,7 @@
 //! Interactive 10-step configuration wizard for BeeBotOS Gateway.
 
 use crate::components::wizard::{ConfigPreview, SecretInput, WizardNavigation, WizardStepper};
+use crate::i18n::I18nContext;
 use crate::state::wizard::*;
 use crate::utils::{download_file, event_target_checked, event_target_value};
 use leptos::prelude::*;
@@ -19,6 +20,8 @@ pub fn SetupPage() -> impl IntoView {
     let state = use_wizard_state();
     let current_step = RwSignal::new(1usize);
     let is_submitting = RwSignal::new(false);
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
 
     // Sync current_step with wizard state
     Effect::new(move |_| {
@@ -70,24 +73,24 @@ pub fn SetupPage() -> impl IntoView {
     };
 
     view! {
-        <Title text="Gateway Setup - BeeBotOS" />
+        <Title text={move || i18n_stored.get_value().t("setup-page-title")} />
         <div class="page setup-page">
             <div class="wizard-container">
                 <WizardStepper current_step=current_step />
 
                 <div class="wizard-content">
                     {move || match current_step.get() {
-                        1 => view! { <StepWelcome state=state current_step=current_step /> }.into_any(),
-                        2 => view! { <StepServer state=state /> }.into_any(),
-                        3 => view! { <StepDatabase state=state /> }.into_any(),
-                        4 => view! { <StepSecurity state=state /> }.into_any(),
-                        5 => view! { <StepLlmModels state=state /> }.into_any(),
-                        6 => view! { <StepChannels state=state /> }.into_any(),
-                        7 => view! { <StepBlockchain state=state /> }.into_any(),
-                        8 => view! { <StepLogging state=state /> }.into_any(),
-                        9 => view! { <StepReview state=state toml=toml_preview.into() env=env_preview.into() /> }.into_any(),
-                        10 => view! { <StepDeploy state=state toml=toml_preview.into() env=env_preview.into() docker=docker_preview.into() k8s=k8s_preview.into() /> }.into_any(),
-                        _ => view! { <StepWelcome state=state current_step=current_step /> }.into_any(),
+                        1 => view! { <StepWelcome state=state current_step=current_step i18n=i18n_stored.get_value() /> }.into_any(),
+                        2 => view! { <StepServer state=state i18n=i18n_stored.get_value() /> }.into_any(),
+                        3 => view! { <StepDatabase state=state i18n=i18n_stored.get_value() /> }.into_any(),
+                        4 => view! { <StepSecurity state=state i18n=i18n_stored.get_value() /> }.into_any(),
+                        5 => view! { <StepLlmModels state=state i18n=i18n_stored.get_value() /> }.into_any(),
+                        6 => view! { <StepChannels state=state i18n=i18n_stored.get_value() /> }.into_any(),
+                        7 => view! { <StepBlockchain state=state i18n=i18n_stored.get_value() /> }.into_any(),
+                        8 => view! { <StepLogging state=state i18n=i18n_stored.get_value() /> }.into_any(),
+                        9 => view! { <StepReview state=state toml=toml_preview.into() env=env_preview.into() i18n=i18n_stored.get_value() /> }.into_any(),
+                        10 => view! { <StepDeploy state=state toml=toml_preview.into() env=env_preview.into() docker=docker_preview.into() k8s=k8s_preview.into() i18n=i18n_stored.get_value() /> }.into_any(),
+                        _ => view! { <StepWelcome state=state current_step=current_step i18n=i18n_stored.get_value() /> }.into_any(),
                     }}
                 </div>
 
@@ -107,7 +110,8 @@ pub fn SetupPage() -> impl IntoView {
 
 // ============== Step 1: Welcome ==============
 #[component]
-fn StepWelcome(state: RwSignal<WizardState>, current_step: RwSignal<usize>) -> impl IntoView {
+fn StepWelcome(state: RwSignal<WizardState>, current_step: RwSignal<usize>, i18n: I18nContext) -> impl IntoView {
+    let i18n_stored = StoredValue::new(i18n);
     let select_mode = move |mode: &str| {
         state.update(|s| {
             s.mode = match mode {
@@ -134,8 +138,8 @@ fn StepWelcome(state: RwSignal<WizardState>, current_step: RwSignal<usize>) -> i
         <div class="step-content">
             <div class="welcome-header">
                 <div class="welcome-icon">"🐝"</div>
-                <h1>"BeeBotOS Gateway Setup"</h1>
-                <p>"Configure your Gateway in a few simple steps"</p>
+                <h1>{move || i18n_stored.get_value().t("setup-welcome-title")}</h1>
+                <p>{move || i18n_stored.get_value().t("setup-welcome-subtitle")}</p>
             </div>
 
             <div class="setup-modes">
@@ -144,8 +148,8 @@ fn StepWelcome(state: RwSignal<WizardState>, current_step: RwSignal<usize>) -> i
                     move |_| cb("fresh")
                 }>
                     <div class="mode-icon">"🆕"</div>
-                    <h3>"Start Fresh"</h3>
-                    <p>"Create a new configuration from scratch"</p>
+                    <h3>{move || i18n_stored.get_value().t("setup-mode-fresh")}</h3>
+                    <p>{move || i18n_stored.get_value().t("setup-mode-fresh-desc")}</p>
                 </div>
 
                 <div class="mode-card" on:click={
@@ -153,8 +157,8 @@ fn StepWelcome(state: RwSignal<WizardState>, current_step: RwSignal<usize>) -> i
                     move |_| cb("minimal")
                 }>
                     <div class="mode-icon">"⚡"</div>
-                    <h3>"Minimal"</h3>
-                    <p>"SQLite + Kimi + WebChat — for local testing"</p>
+                    <h3>{move || i18n_stored.get_value().t("setup-mode-minimal")}</h3>
+                    <p>{move || i18n_stored.get_value().t("setup-mode-minimal-desc")}</p>
                 </div>
 
                 <div class="mode-card" on:click={
@@ -162,8 +166,8 @@ fn StepWelcome(state: RwSignal<WizardState>, current_step: RwSignal<usize>) -> i
                     move |_| cb("standard")
                 }>
                     <div class="mode-icon">"📦"</div>
-                    <h3>"Standard"</h3>
-                    <p>"Multi-provider + 5 channels — for production"</p>
+                    <h3>{move || i18n_stored.get_value().t("setup-mode-standard")}</h3>
+                    <p>{move || i18n_stored.get_value().t("setup-mode-standard-desc")}</p>
                 </div>
 
                 <div class="mode-card" on:click={
@@ -171,8 +175,8 @@ fn StepWelcome(state: RwSignal<WizardState>, current_step: RwSignal<usize>) -> i
                     move |_| cb("enterprise")
                 }>
                     <div class="mode-icon">"🏢"</div>
-                    <h3>"Enterprise"</h3>
-                    <p>"Postgres + TLS + OTLP — full stack"</p>
+                    <h3>{move || i18n_stored.get_value().t("setup-mode-enterprise")}</h3>
+                    <p>{move || i18n_stored.get_value().t("setup-mode-enterprise-desc")}</p>
                 </div>
             </div>
         </div>
@@ -181,15 +185,16 @@ fn StepWelcome(state: RwSignal<WizardState>, current_step: RwSignal<usize>) -> i
 
 // ============== Step 2: Server ==============
 #[component]
-fn StepServer(state: RwSignal<WizardState>) -> impl IntoView {
+fn StepServer(state: RwSignal<WizardState>, i18n: I18nContext) -> impl IntoView {
+    let i18n_stored = StoredValue::new(i18n);
     view! {
         <div class="step-content">
-            <h2>"Server Configuration"</h2>
-            <p class="step-description">"Configure HTTP/gRPC server settings"</p>
+            <h2>{move || i18n_stored.get_value().t("setup-server-title")}</h2>
+            <p class="step-description">{move || i18n_stored.get_value().t("setup-server-desc")}</p>
 
             <div class="form-grid">
                 <div class="form-group">
-                    <label>"Host"</label>
+                    <label>{move || i18n_stored.get_value().t("setup-server-host")}</label>
                     <input
                         type="text"
                         prop:value=move || state.get().server.host.clone()
@@ -197,7 +202,7 @@ fn StepServer(state: RwSignal<WizardState>) -> impl IntoView {
                     />
                 </div>
                 <div class="form-group">
-                    <label>"HTTP Port"</label>
+                    <label>{move || i18n_stored.get_value().t("setup-server-http-port")}</label>
                     <input
                         type="number"
                         prop:value=move || state.get().server.http_port.to_string()
@@ -205,7 +210,7 @@ fn StepServer(state: RwSignal<WizardState>) -> impl IntoView {
                     />
                 </div>
                 <div class="form-group">
-                    <label>"gRPC Port"</label>
+                    <label>{move || i18n_stored.get_value().t("setup-server-grpc-port")}</label>
                     <input
                         type="number"
                         prop:value=move || state.get().server.grpc_port.to_string()
@@ -213,7 +218,7 @@ fn StepServer(state: RwSignal<WizardState>) -> impl IntoView {
                     />
                 </div>
                 <div class="form-group">
-                    <label>"Request Timeout (seconds)"</label>
+                    <label>{move || i18n_stored.get_value().t("setup-server-timeout")}</label>
                     <input
                         type="number"
                         prop:value=move || state.get().server.request_timeout.to_string()
@@ -221,7 +226,7 @@ fn StepServer(state: RwSignal<WizardState>) -> impl IntoView {
                     />
                 </div>
                 <div class="form-group">
-                    <label>"Max Body Size (MB)"</label>
+                    <label>{move || i18n_stored.get_value().t("setup-server-max-body")}</label>
                     <input
                         type="number"
                         prop:value=move || state.get().server.max_body_size.to_string()
@@ -229,7 +234,7 @@ fn StepServer(state: RwSignal<WizardState>) -> impl IntoView {
                     />
                 </div>
                 <div class="form-group">
-                    <label>"CORS Origins (comma-separated)"</label>
+                    <label>{move || i18n_stored.get_value().t("setup-server-cors")}</label>
                     <input
                         type="text"
                         prop:value=move || state.get().server.cors_origins.join(", ")
@@ -244,7 +249,7 @@ fn StepServer(state: RwSignal<WizardState>) -> impl IntoView {
             </div>
 
             <details class="advanced-section">
-                <summary>"Advanced TLS Options"</summary>
+                <summary>{move || i18n_stored.get_value().t("setup-server-advanced-tls")}</summary>
                 <div class="form-group checkbox-group">
                     <label class="checkbox-label">
                         <input
@@ -252,14 +257,14 @@ fn StepServer(state: RwSignal<WizardState>) -> impl IntoView {
                             prop:checked=move || state.get().server.tls_enabled
                             on:change=move |e| state.update(|s| s.server.tls_enabled = event_target_checked(&e))
                         />
-                        <span>"Enable TLS"</span>
+                        <span>{move || i18n_stored.get_value().t("setup-server-enable-tls")}</span>
                     </label>
                 </div>
                 {move || if state.get().server.tls_enabled {
                     view! {
                         <>
                             <div class="form-group">
-                                <label>"TLS Cert Path"</label>
+                                <label>{move || i18n_stored.get_value().t("setup-server-tls-cert")}</label>
                                 <input
                                     type="text"
                                     prop:value=move || state.get().server.tls_cert_path.clone()
@@ -267,7 +272,7 @@ fn StepServer(state: RwSignal<WizardState>) -> impl IntoView {
                                 />
                             </div>
                             <div class="form-group">
-                                <label>"TLS Key Path"</label>
+                                <label>{move || i18n_stored.get_value().t("setup-server-tls-key")}</label>
                                 <input
                                     type="text"
                                     prop:value=move || state.get().server.tls_key_path.clone()
@@ -281,7 +286,7 @@ fn StepServer(state: RwSignal<WizardState>) -> impl IntoView {
                                         prop:checked=move || state.get().server.mtls_enabled
                                         on:change=move |e| state.update(|s| s.server.mtls_enabled = event_target_checked(&e))
                                     />
-                                    <span>"Enable mTLS"</span>
+                                    <span>{move || i18n_stored.get_value().t("setup-server-enable-mtls")}</span>
                                 </label>
                             </div>
                         </>
@@ -296,27 +301,28 @@ fn StepServer(state: RwSignal<WizardState>) -> impl IntoView {
 
 // ============== Step 3: Database ==============
 #[component]
-fn StepDatabase(state: RwSignal<WizardState>) -> impl IntoView {
+fn StepDatabase(state: RwSignal<WizardState>, i18n: I18nContext) -> impl IntoView {
+    let i18n_stored = StoredValue::new(i18n);
     view! {
         <div class="step-content">
-            <h2>"Database Configuration"</h2>
-            <p class="step-description">"Choose your database engine"</p>
+            <h2>{move || i18n_stored.get_value().t("setup-db-title")}</h2>
+            <p class="step-description">{move || i18n_stored.get_value().t("setup-db-desc")}</p>
 
             <div class="form-group">
-                <label>"Database Type"</label>
+                <label>{move || i18n_stored.get_value().t("setup-db-type")}</label>
                 <select
                     prop:value=move || state.get().database.db_type.clone()
                     on:change=move |e| state.update(|s| s.database.db_type = event_target_value(&e))
                 >
-                    <option value="sqlite">"SQLite"</option>
-                    <option value="postgres">"PostgreSQL"</option>
+                    <option value="sqlite">{move || i18n_stored.get_value().t("setup-db-sqlite")}</option>
+                    <option value="postgres">{move || i18n_stored.get_value().t("setup-db-postgres")}</option>
                 </select>
             </div>
 
             {move || if state.get().database.db_type == "sqlite" {
                 view! {
                     <div class="form-group">
-                        <label>"SQLite Path"</label>
+                        <label>{move || i18n_stored.get_value().t("setup-db-sqlite-path")}</label>
                         <input
                             type="text"
                             prop:value=move || state.get().database.sqlite_path.clone()
@@ -327,7 +333,7 @@ fn StepDatabase(state: RwSignal<WizardState>) -> impl IntoView {
             } else {
                 view! {
                     <div class="form-group">
-                        <label>"PostgreSQL URL"</label>
+                        <label>{move || i18n_stored.get_value().t("setup-db-postgres-url")}</label>
                         <input
                             type="text"
                             placeholder="postgres://user:pass@host/db"
@@ -340,7 +346,7 @@ fn StepDatabase(state: RwSignal<WizardState>) -> impl IntoView {
 
             <div class="form-grid">
                 <div class="form-group">
-                    <label>"Max Connections"</label>
+                    <label>{move || i18n_stored.get_value().t("setup-db-max-conn")}</label>
                     <input
                         type="number"
                         prop:value=move || state.get().database.max_connections.to_string()
@@ -348,7 +354,7 @@ fn StepDatabase(state: RwSignal<WizardState>) -> impl IntoView {
                     />
                 </div>
                 <div class="form-group">
-                    <label>"Min Connections"</label>
+                    <label>{move || i18n_stored.get_value().t("setup-db-min-conn")}</label>
                     <input
                         type="number"
                         prop:value=move || state.get().database.min_connections.to_string()
@@ -356,7 +362,7 @@ fn StepDatabase(state: RwSignal<WizardState>) -> impl IntoView {
                     />
                 </div>
                 <div class="form-group">
-                    <label>"Connect Timeout (seconds)"</label>
+                    <label>{move || i18n_stored.get_value().t("setup-db-connect-timeout")}</label>
                     <input
                         type="number"
                         prop:value=move || state.get().database.connect_timeout.to_string()
@@ -372,7 +378,7 @@ fn StepDatabase(state: RwSignal<WizardState>) -> impl IntoView {
                         prop:checked=move || state.get().database.auto_migrate
                         on:change=move |e| state.update(|s| s.database.auto_migrate = event_target_checked(&e))
                     />
-                    <span>"Auto Migrate on Startup"</span>
+                    <span>{move || i18n_stored.get_value().t("setup-db-auto-migrate")}</span>
                 </label>
             </div>
         </div>
@@ -381,7 +387,8 @@ fn StepDatabase(state: RwSignal<WizardState>) -> impl IntoView {
 
 // ============== Step 4: Security ==============
 #[component]
-fn StepSecurity(state: RwSignal<WizardState>) -> impl IntoView {
+fn StepSecurity(state: RwSignal<WizardState>, i18n: I18nContext) -> impl IntoView {
+    let i18n_stored = StoredValue::new(i18n);
     let secret = RwSignal::new(String::new());
 
     Effect::new(move |_| {
@@ -405,17 +412,17 @@ fn StepSecurity(state: RwSignal<WizardState>) -> impl IntoView {
 
     view! {
         <div class="step-content">
-            <h2>"JWT & Security"</h2>
-            <p class="step-description">"Configure authentication and rate limiting"</p>
+            <h2>{move || i18n_stored.get_value().t("setup-security-title")}</h2>
+            <p class="step-description">{move || i18n_stored.get_value().t("setup-security-desc")}</p>
 
             <div class="form-group">
-                <label>"JWT Secret"</label>
+                <label>{move || i18n_stored.get_value().t("setup-security-jwt-secret")}</label>
                 <SecretInput
                     value=secret
-                    placeholder="Min 32 characters".to_string()
+                    placeholder=i18n_stored.get_value().t("setup-security-jwt-placeholder")
                     on_generate=Callback::new(move |_| { generate(); })
                 />
-                <p class="form-help">"Used to sign JWT tokens. Keep this secure!"</p>
+                <p class="form-help">{move || i18n_stored.get_value().t("setup-security-jwt-help")}</p>
                 {move || generate_error.get().map(|err| view! {
                     <p class="form-error">{err}</p>
                 })}
@@ -423,7 +430,7 @@ fn StepSecurity(state: RwSignal<WizardState>) -> impl IntoView {
 
             <div class="form-grid">
                 <div class="form-group">
-                    <label>"Token Expiry (seconds)"</label>
+                    <label>{move || i18n_stored.get_value().t("setup-security-token-expiry")}</label>
                     <input
                         type="number"
                         prop:value=move || state.get().jwt.token_expiry.to_string()
@@ -431,7 +438,7 @@ fn StepSecurity(state: RwSignal<WizardState>) -> impl IntoView {
                     />
                 </div>
                 <div class="form-group">
-                    <label>"Refresh Token Expiry (seconds)"</label>
+                    <label>{move || i18n_stored.get_value().t("setup-security-refresh-expiry")}</label>
                     <input
                         type="number"
                         prop:value=move || state.get().jwt.refresh_token_expiry.to_string()
@@ -447,7 +454,7 @@ fn StepSecurity(state: RwSignal<WizardState>) -> impl IntoView {
                         prop:checked=move || state.get().jwt.rate_limit_enabled
                         on:change=move |e| state.update(|s| s.jwt.rate_limit_enabled = event_target_checked(&e))
                     />
-                    <span>"Enable Rate Limiting"</span>
+                    <span>{move || i18n_stored.get_value().t("setup-security-enable-rate-limit")}</span>
                 </label>
             </div>
 
@@ -455,7 +462,7 @@ fn StepSecurity(state: RwSignal<WizardState>) -> impl IntoView {
                 view! {
                     <div class="form-grid">
                         <div class="form-group">
-                            <label>"QPS Limit"</label>
+                            <label>{move || i18n_stored.get_value().t("setup-security-qps-limit")}</label>
                             <input
                                 type="number"
                                 prop:value=move || state.get().jwt.qps_limit.to_string()
@@ -463,7 +470,7 @@ fn StepSecurity(state: RwSignal<WizardState>) -> impl IntoView {
                             />
                         </div>
                         <div class="form-group">
-                            <label>"Burst Limit"</label>
+                            <label>{move || i18n_stored.get_value().t("setup-security-burst-limit")}</label>
                             <input
                                 type="number"
                                 prop:value=move || state.get().jwt.burst_limit.to_string()
@@ -481,7 +488,8 @@ fn StepSecurity(state: RwSignal<WizardState>) -> impl IntoView {
 
 // ============== Step 5: LLM Models ==============
 #[component]
-fn StepLlmModels(state: RwSignal<WizardState>) -> impl IntoView {
+fn StepLlmModels(state: RwSignal<WizardState>, i18n: I18nContext) -> impl IntoView {
+    let i18n_stored = StoredValue::new(i18n);
     let new_provider_name = RwSignal::new(String::new());
 
     let add_provider = move || {
@@ -518,12 +526,12 @@ fn StepLlmModels(state: RwSignal<WizardState>) -> impl IntoView {
 
     view! {
         <div class="step-content">
-            <h2>"LLM Models Configuration"</h2>
-            <p class="step-description">"Configure AI providers and fallback chain"</p>
+            <h2>{move || i18n_stored.get_value().t("setup-llm-title")}</h2>
+            <p class="step-description">{move || i18n_stored.get_value().t("setup-llm-desc")}</p>
 
             <div class="form-grid">
                 <div class="form-group">
-                    <label>"Default Provider"</label>
+                    <label>{move || i18n_stored.get_value().t("setup-llm-default-provider")}</label>
                     <select
                         prop:value=move || state.get().models.default_provider.clone()
                         on:change=move |e| state.update(|s| s.models.default_provider = event_target_value(&e))
@@ -535,7 +543,7 @@ fn StepLlmModels(state: RwSignal<WizardState>) -> impl IntoView {
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>"Max Tokens"</label>
+                    <label>{move || i18n_stored.get_value().t("setup-llm-max-tokens")}</label>
                     <input
                         type="number"
                         prop:value=move || state.get().models.max_tokens.to_string()
@@ -543,7 +551,7 @@ fn StepLlmModels(state: RwSignal<WizardState>) -> impl IntoView {
                     />
                 </div>
                 <div class="form-group">
-                    <label>"Request Timeout (seconds)"</label>
+                    <label>{move || i18n_stored.get_value().t("setup-llm-timeout")}</label>
                     <input
                         type="number"
                         prop:value=move || state.get().models.request_timeout.to_string()
@@ -559,12 +567,12 @@ fn StepLlmModels(state: RwSignal<WizardState>) -> impl IntoView {
                         prop:checked=move || state.get().models.cost_optimization
                         on:change=move |e| state.update(|s| s.models.cost_optimization = event_target_checked(&e))
                     />
-                    <span>"Enable Cost Optimization"</span>
+                    <span>{move || i18n_stored.get_value().t("setup-llm-cost-opt")}</span>
                 </label>
             </div>
 
             <div class="form-group">
-                <label>"System Prompt"</label>
+                <label>{move || i18n_stored.get_value().t("setup-llm-system-prompt")}</label>
                 <textarea
                     rows="3"
                     prop:value=move || state.get().models.system_prompt.clone()
@@ -572,7 +580,7 @@ fn StepLlmModels(state: RwSignal<WizardState>) -> impl IntoView {
                 />
             </div>
 
-            <h3>"Providers"</h3>
+            <h3>{move || i18n_stored.get_value().t("setup-llm-providers")}</h3>
             <div class="providers-list">
                 {move || state.get().models.providers.iter().enumerate().map(|(idx, p)| {
                     let p = p.clone();
@@ -589,7 +597,7 @@ fn StepLlmModels(state: RwSignal<WizardState>) -> impl IntoView {
                                 </button>
                             </div>
                             <div class="form-group">
-                                <label>"API Key"</label>
+                                <label>{move || i18n_stored.get_value().t("setup-llm-api-key")}</label>
                                 <input
                                     type="password"
                                     prop:value=p.api_key.clone()
@@ -600,7 +608,7 @@ fn StepLlmModels(state: RwSignal<WizardState>) -> impl IntoView {
                                 />
                             </div>
                             <div class="form-group">
-                                <label>"Model"</label>
+                                <label>{move || i18n_stored.get_value().t("setup-llm-model")}</label>
                                 <input
                                     type="text"
                                     prop:value=p.model.clone()
@@ -611,7 +619,7 @@ fn StepLlmModels(state: RwSignal<WizardState>) -> impl IntoView {
                                 />
                             </div>
                             <div class="form-group">
-                                <label>"Base URL"</label>
+                                <label>{move || i18n_stored.get_value().t("setup-llm-base-url")}</label>
                                 <input
                                     type="text"
                                     prop:value=p.base_url.clone()
@@ -623,7 +631,7 @@ fn StepLlmModels(state: RwSignal<WizardState>) -> impl IntoView {
                             </div>
                             <div class="form-row">
                                 <div class="form-group">
-                                    <label>"Temperature"</label>
+                                    <label>{move || i18n_stored.get_value().t("setup-llm-temperature")}</label>
                                     <input
                                         type="number"
                                         step="0.1"
@@ -637,7 +645,7 @@ fn StepLlmModels(state: RwSignal<WizardState>) -> impl IntoView {
                                     />
                                 </div>
                                 <div class="form-group">
-                                    <label>"Context Window"</label>
+                                    <label>{move || i18n_stored.get_value().t("setup-llm-context-window")}</label>
                                     <input
                                         type="number"
                                         prop:value=p.context_window.map(|c| c.to_string()).unwrap_or_default()
@@ -656,12 +664,12 @@ fn StepLlmModels(state: RwSignal<WizardState>) -> impl IntoView {
             <div class="add-provider-row">
                 <input
                     type="text"
-                    placeholder="Provider name (e.g. kimi, openai)"
+                    placeholder={move || i18n_stored.get_value().t("setup-llm-provider-placeholder")}
                     prop:value=new_provider_name
                     on:input=move |e| new_provider_name.set(event_target_value(&e))
                 />
                 <button class="btn btn-secondary" on:click=move |_| add_provider()>
-                    "+ Add Provider"
+                    {move || i18n_stored.get_value().t("setup-llm-add-provider")}
                 </button>
             </div>
         </div>
@@ -670,15 +678,16 @@ fn StepLlmModels(state: RwSignal<WizardState>) -> impl IntoView {
 
 // ============== Step 6: Channels ==============
 #[component]
-fn StepChannels(state: RwSignal<WizardState>) -> impl IntoView {
+fn StepChannels(state: RwSignal<WizardState>, i18n: I18nContext) -> impl IntoView {
+    let i18n_stored = StoredValue::new(i18n);
     view! {
         <div class="step-content">
-            <h2>"Channels Configuration"</h2>
-            <p class="step-description">"Enable and configure communication platforms"</p>
+            <h2>{move || i18n_stored.get_value().t("setup-channels-title")}</h2>
+            <p class="step-description">{move || i18n_stored.get_value().t("setup-channels-desc")}</p>
 
             <div class="form-grid">
                 <div class="form-group">
-                    <label>"Context Window (messages)"</label>
+                    <label>{move || i18n_stored.get_value().t("setup-channels-context-window")}</label>
                     <input
                         type="number"
                         prop:value=move || state.get().channels.context_window.to_string()
@@ -686,7 +695,7 @@ fn StepChannels(state: RwSignal<WizardState>) -> impl IntoView {
                     />
                 </div>
                 <div class="form-group">
-                    <label>"Max File Size (MB)"</label>
+                    <label>{move || i18n_stored.get_value().t("setup-channels-max-file")}</label>
                     <input
                         type="number"
                         prop:value=move || state.get().channels.max_file_size.to_string()
@@ -694,7 +703,7 @@ fn StepChannels(state: RwSignal<WizardState>) -> impl IntoView {
                     />
                 </div>
                 <div class="form-group">
-                    <label>"Default Agent ID"</label>
+                    <label>{move || i18n_stored.get_value().t("setup-channels-default-agent")}</label>
                     <input
                         type="text"
                         prop:value=move || state.get().channels.default_agent_id.clone()
@@ -710,7 +719,7 @@ fn StepChannels(state: RwSignal<WizardState>) -> impl IntoView {
                         prop:checked=move || state.get().channels.auto_download_media
                         on:change=move |e| state.update(|s| s.channels.auto_download_media = event_target_checked(&e))
                     />
-                    <span>"Auto Download Media"</span>
+                    <span>{move || i18n_stored.get_value().t("setup-channels-auto-download")}</span>
                 </label>
             </div>
 
@@ -721,11 +730,11 @@ fn StepChannels(state: RwSignal<WizardState>) -> impl IntoView {
                         prop:checked=move || state.get().channels.auto_reply
                         on:change=move |e| state.update(|s| s.channels.auto_reply = event_target_checked(&e))
                     />
-                    <span>"Auto Reply"</span>
+                    <span>{move || i18n_stored.get_value().t("setup-channels-auto-reply")}</span>
                 </label>
             </div>
 
-            <h3>"Platforms"</h3>
+            <h3>{move || i18n_stored.get_value().t("setup-channels-platforms")}</h3>
             <div class="platforms-list">
                 {move || state.get().channels.platforms.iter().enumerate().map(|(idx, p)| {
                     let idx = idx;
@@ -745,7 +754,7 @@ fn StepChannels(state: RwSignal<WizardState>) -> impl IntoView {
                                     <span class="platform-name">{p.name.clone()}</span>
                                 </label>
                                 <span class=format!("status-badge {}", if enabled { "enabled" } else { "disabled" })>
-                                    {if enabled { "Enabled" } else { "Disabled" }}
+                                    {if enabled { i18n_stored.get_value().t("status-enabled") } else { i18n_stored.get_value().t("status-disabled") }}
                                 </span>
                             </div>
                         </div>
@@ -758,11 +767,12 @@ fn StepChannels(state: RwSignal<WizardState>) -> impl IntoView {
 
 // ============== Step 7: Blockchain ==============
 #[component]
-fn StepBlockchain(state: RwSignal<WizardState>) -> impl IntoView {
+fn StepBlockchain(state: RwSignal<WizardState>, i18n: I18nContext) -> impl IntoView {
+    let i18n_stored = StoredValue::new(i18n);
     view! {
         <div class="step-content">
-            <h2>"Blockchain Configuration"</h2>
-            <p class="step-description">"Optional blockchain integration"</p>
+            <h2>{move || i18n_stored.get_value().t("setup-blockchain-title")}</h2>
+            <p class="step-description">{move || i18n_stored.get_value().t("setup-blockchain-desc")}</p>
 
             <div class="form-group checkbox-group">
                 <label class="checkbox-label">
@@ -771,7 +781,7 @@ fn StepBlockchain(state: RwSignal<WizardState>) -> impl IntoView {
                         prop:checked=move || state.get().blockchain.enabled
                         on:change=move |e| state.update(|s| s.blockchain.enabled = event_target_checked(&e))
                     />
-                    <span>"Enable Blockchain"</span>
+                    <span>{move || i18n_stored.get_value().t("setup-blockchain-enable")}</span>
                 </label>
             </div>
 
@@ -779,7 +789,7 @@ fn StepBlockchain(state: RwSignal<WizardState>) -> impl IntoView {
                 view! {
                     <>
                         <div class="form-group">
-                            <label>"Chain ID"</label>
+                            <label>{move || i18n_stored.get_value().t("setup-blockchain-chain-id")}</label>
                             <input
                                 type="number"
                                 prop:value=move || state.get().blockchain.chain_id.to_string()
@@ -787,7 +797,7 @@ fn StepBlockchain(state: RwSignal<WizardState>) -> impl IntoView {
                             />
                         </div>
                         <div class="form-group">
-                            <label>"RPC URL"</label>
+                            <label>{move || i18n_stored.get_value().t("setup-blockchain-rpc")}</label>
                             <input
                                 type="text"
                                 placeholder="https://ethereum-rpc.publicnode.com"
@@ -796,10 +806,10 @@ fn StepBlockchain(state: RwSignal<WizardState>) -> impl IntoView {
                             />
                         </div>
                         <div class="form-group">
-                            <label>"Wallet Mnemonic"</label>
+                            <label>{move || i18n_stored.get_value().t("setup-blockchain-mnemonic")}</label>
                             <input
                                 type="password"
-                                placeholder="12 or 24 word mnemonic phrase"
+                                placeholder={move || i18n_stored.get_value().t("setup-blockchain-mnemonic-placeholder")}
                                 prop:value=move || state.get().blockchain.wallet_mnemonic.clone()
                                 on:input=move |e| state.update(|s| s.blockchain.wallet_mnemonic = event_target_value(&e))
                             />
@@ -815,39 +825,40 @@ fn StepBlockchain(state: RwSignal<WizardState>) -> impl IntoView {
 
 // ============== Step 8: Logging ==============
 #[component]
-fn StepLogging(state: RwSignal<WizardState>) -> impl IntoView {
+fn StepLogging(state: RwSignal<WizardState>, i18n: I18nContext) -> impl IntoView {
+    let i18n_stored = StoredValue::new(i18n);
     view! {
         <div class="step-content">
-            <h2>"Logging & Observability"</h2>
-            <p class="step-description">"Configure logs, metrics and tracing"</p>
+            <h2>{move || i18n_stored.get_value().t("setup-logging-title")}</h2>
+            <p class="step-description">{move || i18n_stored.get_value().t("setup-logging-desc")}</p>
 
             <div class="form-grid">
                 <div class="form-group">
-                    <label>"Log Level"</label>
+                    <label>{move || i18n_stored.get_value().t("setup-logging-level")}</label>
                     <select
                         prop:value=move || state.get().logging.level.clone()
                         on:change=move |e| state.update(|s| s.logging.level = event_target_value(&e))
                     >
-                        <option value="trace">"Trace"</option>
-                        <option value="debug">"Debug"</option>
-                        <option value="info">"Info"</option>
-                        <option value="warn">"Warn"</option>
-                        <option value="error">"Error"</option>
+                        <option value="trace">{move || i18n_stored.get_value().t("log-trace")}</option>
+                        <option value="debug">{move || i18n_stored.get_value().t("log-debug")}</option>
+                        <option value="info">{move || i18n_stored.get_value().t("log-info")}</option>
+                        <option value="warn">{move || i18n_stored.get_value().t("log-warn")}</option>
+                        <option value="error">{move || i18n_stored.get_value().t("log-error")}</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>"Log Format"</label>
+                    <label>{move || i18n_stored.get_value().t("setup-logging-format")}</label>
                     <select
                         prop:value=move || state.get().logging.format.clone()
                         on:change=move |e| state.update(|s| s.logging.format = event_target_value(&e))
                     >
-                        <option value="json">"JSON"</option>
-                        <option value="pretty">"Pretty"</option>
-                        <option value="compact">"Compact"</option>
+                        <option value="json">{move || i18n_stored.get_value().t("log-json")}</option>
+                        <option value="pretty">{move || i18n_stored.get_value().t("log-pretty")}</option>
+                        <option value="compact">{move || i18n_stored.get_value().t("log-compact")}</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>"Log File Path"</label>
+                    <label>{move || i18n_stored.get_value().t("setup-logging-file-path")}</label>
                     <input
                         type="text"
                         prop:value=move || state.get().logging.file_path.clone()
@@ -855,15 +866,15 @@ fn StepLogging(state: RwSignal<WizardState>) -> impl IntoView {
                     />
                 </div>
                 <div class="form-group">
-                    <label>"Log Rotation"</label>
+                    <label>{move || i18n_stored.get_value().t("setup-logging-rotation")}</label>
                     <select
                         prop:value=move || state.get().logging.rotation.clone()
                         on:change=move |e| state.update(|s| s.logging.rotation = event_target_value(&e))
                     >
-                        <option value="minutely">"Minutely"</option>
-                        <option value="hourly">"Hourly"</option>
-                        <option value="daily">"Daily"</option>
-                        <option value="never">"Never"</option>
+                        <option value="minutely">{move || i18n_stored.get_value().t("log-minutely")}</option>
+                        <option value="hourly">{move || i18n_stored.get_value().t("log-hourly")}</option>
+                        <option value="daily">{move || i18n_stored.get_value().t("log-daily")}</option>
+                        <option value="never">{move || i18n_stored.get_value().t("log-never")}</option>
                     </select>
                 </div>
             </div>
@@ -875,14 +886,14 @@ fn StepLogging(state: RwSignal<WizardState>) -> impl IntoView {
                         prop:checked=move || state.get().logging.enable_metrics
                         on:change=move |e| state.update(|s| s.logging.enable_metrics = event_target_checked(&e))
                     />
-                    <span>"Enable Metrics (Prometheus)"</span>
+                    <span>{move || i18n_stored.get_value().t("setup-logging-enable-metrics")}</span>
                 </label>
             </div>
 
             {move || if state.get().logging.enable_metrics {
                 view! {
                     <div class="form-group">
-                        <label>"Metrics Port"</label>
+                        <label>{move || i18n_stored.get_value().t("setup-logging-metrics-port")}</label>
                         <input
                             type="number"
                             prop:value=move || state.get().logging.metrics_port.to_string()
@@ -901,7 +912,7 @@ fn StepLogging(state: RwSignal<WizardState>) -> impl IntoView {
                         prop:checked=move || state.get().logging.enable_tracing
                         on:change=move |e| state.update(|s| s.logging.enable_tracing = event_target_checked(&e))
                     />
-                    <span>"Enable OpenTelemetry Tracing"</span>
+                    <span>{move || i18n_stored.get_value().t("setup-logging-enable-tracing")}</span>
                 </label>
             </div>
 
@@ -909,7 +920,7 @@ fn StepLogging(state: RwSignal<WizardState>) -> impl IntoView {
                 view! {
                     <>
                         <div class="form-group">
-                            <label>"OTLP Endpoint"</label>
+                            <label>{move || i18n_stored.get_value().t("setup-logging-otlp")}</label>
                             <input
                                 type="text"
                                 prop:value=move || state.get().logging.otlp_endpoint.clone()
@@ -917,7 +928,7 @@ fn StepLogging(state: RwSignal<WizardState>) -> impl IntoView {
                             />
                         </div>
                         <div class="form-group">
-                            <label>"Trace Sampling Rate"</label>
+                            <label>{move || i18n_stored.get_value().t("setup-logging-sampling")}</label>
                             <input
                                 type="number"
                                 step="0.01"
@@ -942,18 +953,20 @@ fn StepReview(
     #[allow(unused_variables)] state: RwSignal<WizardState>,
     toml: Signal<String>,
     env: Signal<String>,
+    i18n: I18nContext,
 ) -> impl IntoView {
+    let i18n_stored = StoredValue::new(i18n);
     let errors = Signal::derive(move || state.get().validation_errors.clone());
 
     view! {
         <div class="step-content">
-            <h2>"Review Configuration"</h2>
-            <p class="step-description">"Verify your settings before deployment"</p>
+            <h2>{move || i18n_stored.get_value().t("setup-review-title")}</h2>
+            <p class="step-description">{move || i18n_stored.get_value().t("setup-review-desc")}</p>
 
             {move || if !errors.get().is_empty() {
                 view! {
                     <div class="validation-summary">
-                        <h4>"⚠️ Validation Warnings"</h4>
+                        <h4>{move || i18n_stored.get_value().t("setup-review-warnings")}</h4>
                         <ul>
                             {errors.get().into_iter().map(|err| {
                                 view! { <li>{format!("{}: {}", err.field, err.message)}</li> }
@@ -964,7 +977,7 @@ fn StepReview(
             } else {
                 view! {
                     <div class="validation-summary success">
-                        "✅ All required fields filled"
+                        {move || i18n_stored.get_value().t("setup-review-success")}
                     </div>
                 }.into_any()
             }}
@@ -982,7 +995,9 @@ fn StepDeploy(
     env: Signal<String>,
     docker: Signal<String>,
     k8s: Signal<String>,
+    i18n: I18nContext,
 ) -> impl IntoView {
+    let i18n_stored = StoredValue::new(i18n);
     let download_toml = move || {
         let content = toml.get();
         download_file("beebotos.toml", &content, "text/toml");
@@ -1005,53 +1020,53 @@ fn StepDeploy(
 
     view! {
         <div class="step-content">
-            <h2>"Deploy Configuration"</h2>
-            <p class="step-description">"Export and apply your configuration"</p>
+            <h2>{move || i18n_stored.get_value().t("setup-deploy-title")}</h2>
+            <p class="step-description">{move || i18n_stored.get_value().t("setup-deploy-desc")}</p>
 
             <div class="deploy-options">
                 <div class="deploy-card">
                     <h3>"📝 TOML Config"</h3>
-                    <p>"Download beebotos.toml and place it in your config/ directory"</p>
+                    <p>{move || i18n_stored.get_value().t("setup-deploy-toml-desc")}</p>
                     <button class="btn btn-primary" on:click=move |_| download_toml()>
-                        "Download beebotos.toml"
+                        {move || i18n_stored.get_value().t("setup-deploy-toml-btn")}
                     </button>
                 </div>
 
                 <div class="deploy-card">
                     <h3>"🔑 Environment Variables"</h3>
-                    <p>"Export as .env file for Docker or CI/CD usage"</p>
+                    <p>{move || i18n_stored.get_value().t("setup-deploy-env-desc")}</p>
                     <button class="btn btn-primary" on:click=move |_| download_env()>
-                        "Download .env"
+                        {move || i18n_stored.get_value().t("setup-deploy-env-btn")}
                     </button>
                 </div>
 
                 <div class="deploy-card">
                     <h3>"🐳 Docker Compose"</h3>
-                    <p>"Generate docker-compose.yml with your settings"</p>
+                    <p>{move || i18n_stored.get_value().t("setup-deploy-docker-desc")}</p>
                     <button class="btn btn-primary" on:click=move |_| download_docker()>
-                        "Download docker-compose.yml"
+                        {move || i18n_stored.get_value().t("setup-deploy-docker-btn")}
                     </button>
                 </div>
 
                 <div class="deploy-card">
                     <h3>"☸️ Kubernetes"</h3>
-                    <p>"Generate K8s Deployment and Service manifests"</p>
+                    <p>{move || i18n_stored.get_value().t("setup-deploy-k8s-desc")}</p>
                     <button class="btn btn-primary" on:click=move |_| download_k8s()>
-                        "Download K8s Manifests"
+                        {move || i18n_stored.get_value().t("setup-deploy-k8s-btn")}
                     </button>
                 </div>
             </div>
 
             <div class="deploy-instructions">
-                <h3>"Deployment Instructions"</h3>
+                <h3>{move || i18n_stored.get_value().t("setup-deploy-instructions-title")}</h3>
                 <ol>
-                    <li>"Download your preferred configuration format"</li>
-                    <li>"Upload to your server"</li>
-                    <li>"Place in the config/ directory (for TOML) or source the .env file"</li>
-                    <li>"Restart the Gateway service"</li>
+                    <li>{move || i18n_stored.get_value().t("setup-deploy-step1")}</li>
+                    <li>{move || i18n_stored.get_value().t("setup-deploy-step2")}</li>
+                    <li>{move || i18n_stored.get_value().t("setup-deploy-step3")}</li>
+                    <li>{move || i18n_stored.get_value().t("setup-deploy-step4")}</li>
                 </ol>
                 <A href="/settings" attr:class="btn btn-primary">
-                    "Go to Settings"
+                    {move || i18n_stored.get_value().t("setup-deploy-go-settings")}
                 </A>
             </div>
         </div>

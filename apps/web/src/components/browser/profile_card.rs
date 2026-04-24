@@ -1,6 +1,7 @@
 //! 浏览器配置卡片组件
 
 use crate::browser::{BrowserProfile, ConnectionStatus};
+use crate::i18n::I18nContext;
 use leptos::prelude::*;
 
 /// 配置卡片组件
@@ -13,6 +14,9 @@ pub fn ProfileCard(
     #[prop(optional)] on_edit: Option<Box<dyn Fn()>>,
     #[prop(optional)] on_delete: Option<Box<dyn Fn()>>,
 ) -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     let is_connected = matches!(status, ConnectionStatus::Connected);
     let status_text = format!("{:?}", status);
 
@@ -28,11 +32,11 @@ pub fn ProfileCard(
 
             <div class="profile-details">
                 <div class="detail-row">
-                    <span class="detail-label">"CDP Port:"</span>
+                    <span class="detail-label">{move || i18n_stored.get_value().t("profile-cdp-port")}</span>
                     <span class="detail-value">{profile.cdp_port}</span>
                 </div>
                 <div class="detail-row">
-                    <span class="detail-label">"Status:"</span>
+                    <span class="detail-label">{move || i18n_stored.get_value().t("profile-status")}</span>
                     <span class={format!("status-badge {}", if is_connected { "connected" } else { "disconnected" })}>
                         {status_text}
                     </span>
@@ -50,7 +54,7 @@ pub fn ProfileCard(
                                 }
                             }
                         >
-                            "Disconnect"
+                            {move || i18n_stored.get_value().t("profile-disconnect")}
                         </button>
                     }.into_any()
                 } else {
@@ -63,7 +67,7 @@ pub fn ProfileCard(
                                 }
                             }
                         >
-                            "Connect"
+                            {move || i18n_stored.get_value().t("profile-connect")}
                         </button>
                     }.into_any()
                 }}
@@ -76,7 +80,7 @@ pub fn ProfileCard(
                         }
                     }
                 >
-                    "Edit"
+                    {move || i18n_stored.get_value().t("profile-edit")}
                 </button>
 
                 <button
@@ -102,7 +106,7 @@ mod tests {
     fn test_profile_card_creation() {
         let profile = BrowserProfile::new("Test", 9222);
         let status = ConnectionStatus::Connected;
-        
+
         // Verify profile and status are created correctly
         assert_eq!(profile.name, "Test");
         assert!(matches!(status, ConnectionStatus::Connected));

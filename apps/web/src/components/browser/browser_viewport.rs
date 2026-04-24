@@ -1,6 +1,7 @@
 //! 浏览器视口组件
 
 use crate::browser::ConnectionStatus;
+use crate::i18n::I18nContext;
 use leptos::prelude::*;
 
 /// 浏览器视口组件
@@ -12,6 +13,9 @@ pub fn BrowserViewport(
     #[prop(optional)] _on_navigate: Option<Box<dyn Fn(String)>>,
     #[prop(optional)] on_refresh: Option<Box<dyn Fn()>>,
 ) -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     let is_connected = matches!(status, ConnectionStatus::Connected);
     let is_loading = is_loading.unwrap_or(false);
 
@@ -35,7 +39,7 @@ pub fn BrowserViewport(
                     type="text"
                     class="browser-url-input"
                     prop:value=url.clone()
-                    placeholder="Enter URL..."
+                    placeholder={move || i18n_stored.get_value().t("browser-url-placeholder")}
                     disabled=!is_connected
                 />
 
@@ -43,7 +47,7 @@ pub fn BrowserViewport(
                     class="btn btn-primary"
                     disabled=!is_connected
                 >
-                    "Go"
+                    {move || i18n_stored.get_value().t("browser-go")}
                 </button>
             </div>
 
@@ -53,7 +57,7 @@ pub fn BrowserViewport(
                     view! {
                         <div class="browser-loading">
                             <div class="loading-spinner"></div>
-                            <p>"Loading..."</p>
+                            <p>{move || i18n_stored.get_value().t("browser-loading")}</p>
                         </div>
                     }.into_any()
                 } else if is_connected {
@@ -68,8 +72,8 @@ pub fn BrowserViewport(
                     view! {
                         <div class="browser-placeholder">
                             <div class="placeholder-icon">"🌐"</div>
-                            <h3>"No Browser Connected"</h3>
-                            <p>"Select a profile to connect"</p>
+                            <h3>{move || i18n_stored.get_value().t("browser-not-connected")}</h3>
+                            <p>{move || i18n_stored.get_value().t("browser-select-profile")}</p>
                         </div>
                     }.into_any()
                 }}
@@ -87,6 +91,9 @@ pub fn BrowserToolbar(
     #[prop(optional)] on_forward: Option<Box<dyn Fn()>>,
     #[prop(optional)] on_refresh: Option<Box<dyn Fn()>>,
 ) -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     view! {
         <div class="browser-toolbar">
             <div class="toolbar-navigation">
@@ -127,7 +134,7 @@ pub fn BrowserToolbar(
                     type="text"
                     class="url-input"
                     prop:value=url
-                    placeholder="Enter URL..."
+                    placeholder={move || i18n_stored.get_value().t("browser-url-placeholder")}
                 />
             </div>
 

@@ -1,5 +1,6 @@
 use crate::api::{AgentInfo, AgentLogEntry, AgentStatus, CreateAgentRequest, UpdateAgentRequest};
 use crate::components::{InfoItem, Modal};
+use crate::i18n::I18nContext;
 use crate::state::use_app_state;
 use crate::utils::{download_file, event_target_value};
 use leptos::prelude::*;
@@ -16,10 +17,13 @@ pub fn AgentDetail() -> impl IntoView {
     let app_state = use_app_state();
     let app_state_stored = StoredValue::new(app_state);
 
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     let agent_id = move || params.with(|p| p.get("id").unwrap_or_default());
 
     let agent_data: RwSignal<Option<AgentInfo>> = RwSignal::new(None);
-    let agent_error = RwSignal::new(None::<String>);
+    let agent_error: RwSignal<Option<String>> = RwSignal::new(None);
     let edit_open = RwSignal::new(false);
     let delete_confirm_open = RwSignal::new(false);
     let logs_open = RwSignal::new(false);
@@ -63,7 +67,7 @@ pub fn AgentDetail() -> impl IntoView {
         let id = agent_id();
         spawn_local(async move {
             if id.is_empty() {
-                agent_error.set(Some("Agent ID is required".to_string()));
+                agent_error.set(Some(i18n_stored.get_value().t("agent-detail-id-required")));
             } else {
                 let service = app_state.agent_service();
                 match service.get(&id).await {
@@ -94,7 +98,7 @@ pub fn AgentDetail() -> impl IntoView {
     });
 
     view! {
-        <Title text="Agent Details - BeeBotOS" />
+        <Title text={move || format!("{} - BeeBotOS", i18n_stored.get_value().t("agent-detail-title"))} />
         <div class="page agent-detail-page">
             {move || {
                 if let Some(error) = agent_error.get() {
@@ -156,7 +160,7 @@ pub fn AgentDetail() -> impl IntoView {
                                 let app_state = app_state_stored.get_value();
                                 move || {
                                     let app_state = app_state.clone();
-                                    let name = format!("{} (Clone)", agent_for_clone.name);
+                                    let name = format!("{} ({})", agent_for_clone.name, i18n_stored.get_value().t("label-clone"));
                                     let description = agent_for_clone.description.clone();
                                     let capabilities = agent_for_clone.capabilities.clone();
                                     spawn_local(async move {
@@ -170,18 +174,18 @@ pub fn AgentDetail() -> impl IntoView {
                                         };
                                         match service.create(req).await {
                                             Ok(_) => {
-                                                clone_success.set(Some("Agent cloned successfully".to_string()));
+                                                clone_success.set(Some(i18n_stored.get_value().t("notification-agent-cloned")));
                                                 app_state.notify(
                                                     crate::state::notification::NotificationType::Success,
-                                                    "Agent Cloned",
-                                                    "Agent cloned successfully".to_string()
+                                                    &i18n_stored.get_value().t("notification-agent-cloned"),
+                                                    i18n_stored.get_value().t("notification-agent-cloned-desc")
                                                 );
                                             }
                                             Err(e) => {
                                                 app_state.notify(
                                                     crate::state::notification::NotificationType::Error,
-                                                    "Clone Failed",
-                                                    format!("Failed to clone agent: {}", e)
+                                                    &i18n_stored.get_value().t("notification-clone-failed"),
+                                                    format!("{}: {}", i18n_stored.get_value().t("notification-clone-failed-desc"), e)
                                                 );
                                             }
                                         }
@@ -212,13 +216,13 @@ pub fn AgentDetail() -> impl IntoView {
                             let agent_id_edit = agent_id_edit.clone();
                             if edit_open.get() {
                             view! {
-                                <Modal title="Edit Agent" on_close=move || edit_open.set(false)>
+                                <Modal title=i18n_stored.get_value().t("modal-edit-agent-title") on_close=move || edit_open.set(false)>
                                     <div class="modal-body">
                                         {move || edit_error.get().map(|msg| view! {
                                             <div class="alert alert-error">{msg}</div>
                                         })}
                                         <div class="form-group">
-                                            <label>"Name"</label>
+                                            <label>{move || i18n_stored.get_value().t("label-name")}</label>
                                             <input
                                                 type="text"
                                                 prop:value=edit_name
@@ -226,7 +230,7 @@ pub fn AgentDetail() -> impl IntoView {
                                             />
                                         </div>
                                         <div class="form-group">
-                                            <label>"Description"</label>
+                                            <label>{move || i18n_stored.get_value().t("label-description")}</label>
                                             <textarea
                                                 prop:value=edit_description
                                                 on:input=move |e| edit_description.set(event_target_value(&e))
@@ -235,7 +239,7 @@ pub fn AgentDetail() -> impl IntoView {
                                     </div>
                                     <div class="modal-footer">
                                         <button class="btn btn-secondary" on:click=move |_| edit_open.set(false)>
-                                            "Cancel"
+                                            {move || i18n_stored.get_value().t("action-cancel")}
                                         </button>
                                         <button
                                             class="btn btn-primary"
@@ -264,7 +268,7 @@ pub fn AgentDetail() -> impl IntoView {
                                                             }
                                                             Err(e) => {
                                                                 edit_saving.set(false);
-                                                                edit_error.set(Some(format!("Update failed: {}", e)));
+                                                                edit_error.set(Some(format!("{}: {}", i18n_stored.get_value().t("notification-update-failed"), e)));
                                                             }
                                                         }
                                                     });
@@ -272,7 +276,7 @@ pub fn AgentDetail() -> impl IntoView {
                                             }
                                             disabled=edit_saving
                                         >
-                                            {move || if edit_saving.get() { "Saving..." } else { "Save" }}
+                                            {move || if edit_saving.get() { i18n_stored.get_value().t("action-saving") } else { i18n_stored.get_value().t("action-save") }}
                                         </button>
                                     </div>
                                 </Modal>
@@ -285,13 +289,13 @@ pub fn AgentDetail() -> impl IntoView {
                         // Configure Modal
                         {move || if configure_open.get() {
                             view! {
-                                <Modal title="Configure Agent" on_close=move || configure_open.set(false)>
+                                <Modal title=i18n_stored.get_value().t("modal-configure-agent-title") on_close=move || configure_open.set(false)>
                                     <div class="modal-body">
-                                        <p>"Agent-level configuration options will be available here. Global model settings can be configured in LLM Configuration."</p>
+                                        <p>{move || i18n_stored.get_value().t("agent-config-hint")}</p>
                                     </div>
                                     <div class="modal-footer">
                                         <button class="btn btn-secondary" on:click=move |_| configure_open.set(false)>
-                                            "Close"
+                                            {move || i18n_stored.get_value().t("action-close")}
                                         </button>
                                         <button
                                             class="btn btn-primary"
@@ -302,7 +306,7 @@ pub fn AgentDetail() -> impl IntoView {
                                                 }
                                             }
                                         >
-                                            "Go to LLM Config"
+                                            {move || i18n_stored.get_value().t("action-go-to-llm-config")}
                                         </button>
                                     </div>
                                 </Modal>
@@ -314,16 +318,16 @@ pub fn AgentDetail() -> impl IntoView {
                         // Logs Modal
                         {move || if logs_open.get() {
                             view! {
-                                <Modal title="Agent Logs" on_close=move || logs_open.set(false)>
+                                <Modal title=i18n_stored.get_value().t("modal-agent-logs-title") on_close=move || logs_open.set(false)>
                                     <div class="modal-body">
                                         {move || if logs_loading.get() {
-                                            view! { <p>"Loading logs..."</p> }.into_any()
+                                            view! { <p>{move || i18n_stored.get_value().t("logs-loading")}</p> }.into_any()
                                         } else if let Some(err) = logs_error.get() {
                                             view! { <div class="alert alert-error">{err}</div> }.into_any()
                                         } else {
                                             let logs = logs_data.get();
                                             if logs.is_empty() {
-                                                view! { <p class="text-muted">"No logs available"</p> }.into_any()
+                                                view! { <p class="text-muted">{move || i18n_stored.get_value().t("logs-empty")}</p> }.into_any()
                                             } else {
                                                 view! {
                                                     <div class="log-list">
@@ -358,13 +362,13 @@ pub fn AgentDetail() -> impl IntoView {
                             let agent_id_delete = agent_id_delete.clone();
                             if delete_confirm_open.get() {
                             view! {
-                                <Modal title="Confirm Delete" on_close=move || delete_confirm_open.set(false)>
+                                <Modal title=i18n_stored.get_value().t("modal-confirm-delete-title") on_close=move || delete_confirm_open.set(false)>
                                     <div class="modal-body">
-                                        <p>{format!("Are you sure you want to delete '{}'? This action cannot be undone.", agent_name_delete)}</p>
+                                        <p>{format!("{} '{}'{}? {}", i18n_stored.get_value().t("delete-confirm-prefix"), agent_name_delete, i18n_stored.get_value().t("delete-confirm-suffix"), i18n_stored.get_value().t("delete-confirm-irreversible"))}</p>
                                     </div>
                                     <div class="modal-footer">
                                         <button class="btn btn-secondary" on:click=move |_| delete_confirm_open.set(false)>
-                                            "Cancel"
+                                            {move || i18n_stored.get_value().t("action-cancel")}
                                         </button>
                                         <button
                                             class="btn btn-danger"
@@ -382,14 +386,14 @@ pub fn AgentDetail() -> impl IntoView {
                                                                 navigate("/agents", Default::default());
                                                             }
                                                             Err(e) => {
-                                                                action_error.set(Some(format!("Delete failed: {}", e)));
+                                                                action_error.set(Some(format!("{}: {}", i18n_stored.get_value().t("notification-delete-failed"), e)));
                                                             }
                                                         }
                                                     });
                                                 }
                                             }
                                         >
-                                            "Delete"
+                                            {move || i18n_stored.get_value().t("action-delete")}
                                         </button>
                                     </div>
                                 </Modal>
@@ -422,6 +426,9 @@ fn AgentDetailView(
     on_clone: impl Fn() + Clone + 'static,
     on_export: impl Fn() + Clone + 'static,
 ) -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     let status_class = match agent.status {
         AgentStatus::Running => "status-running",
         AgentStatus::Stopped | AgentStatus::Idle => "status-idle",
@@ -444,7 +451,7 @@ fn AgentDetailView(
     view! {
         <div class="agent-detail-header">
             <div class="breadcrumb">
-                <A href="/agents">"Agents"</A>
+                <A href="/agents">{move || i18n_stored.get_value().t("nav-agents")}</A>
                 <span>"/"</span>
                 <span>{agent.name.clone()}</span>
             </div>
@@ -460,22 +467,22 @@ fn AgentDetailView(
                         let on_stop = on_stop.clone();
                         view! {
                             <button class="btn btn-warning" on:click=move |_| on_stop.borrow_mut()()>
-                                "⏹ Stop"
+                                "⏹ "{move || i18n_stored.get_value().t("action-stop")}
                             </button>
                         }.into_any()
                     } else {
                         let on_start = on_start.clone();
                         view! {
                             <button class="btn btn-success" on:click=move |_| on_start.borrow_mut()()>
-                                "▶ Start"
+                                "▶ "{move || i18n_stored.get_value().t("action-start")}
                             </button>
                         }.into_any()
                     }}
                     <button class="btn btn-secondary" on:click=move |_| on_edit.borrow_mut()()>
-                        "Edit"
+                        {move || i18n_stored.get_value().t("action-edit")}
                     </button>
                     <button class="btn btn-danger" on:click=move |_| on_delete.borrow_mut()()>
-                        "Delete"
+                        {move || i18n_stored.get_value().t("action-delete")}
                     </button>
                 </div>
             </div>
@@ -484,36 +491,36 @@ fn AgentDetailView(
         <div class="agent-detail-grid">
             <div class="agent-detail-main">
                 <section class="card">
-                    <h2>"Overview"</h2>
+                    <h2>{move || i18n_stored.get_value().t("section-overview")}</h2>
                     {agent.description.clone().map(|desc| view! {
                         <p class="agent-description">{desc}</p>
                     })}
                     <div class="agent-info-grid">
-                        <InfoItem label="Agent ID" value=agent.id.clone() />
+                        <InfoItem label=i18n_stored.get_value().t("label-agent-id") value=agent.id.clone() />
                         <InfoItem
-                            label="Created"
-                            value=agent.created_at.clone().unwrap_or_else(|| "Unknown".to_string())
+                            label=i18n_stored.get_value().t("label-created")
+                            value=agent.created_at.clone().unwrap_or_else(|| i18n_stored.get_value().t("label-unknown"))
                         />
                         <InfoItem
-                            label="Updated"
-                            value=agent.updated_at.clone().unwrap_or_else(|| "Unknown".to_string())
+                            label=i18n_stored.get_value().t("label-updated")
+                            value=agent.updated_at.clone().unwrap_or_else(|| i18n_stored.get_value().t("label-unknown"))
                         />
                         <InfoItem
-                            label="Tasks Completed"
+                            label=i18n_stored.get_value().t("label-tasks-completed")
                             value=agent.task_count.map(|t| t.to_string()).unwrap_or_else(|| "0".to_string())
                         />
                         <InfoItem
-                            label="Uptime"
+                            label=i18n_stored.get_value().t("label-uptime")
                             value=agent.uptime_percent.map(|u| format!("{:.1}%", u)).unwrap_or_else(|| "N/A".to_string())
                         />
                     </div>
                 </section>
 
                 <section class="card">
-                    <h2>"Capabilities"</h2>
+                    <h2>{move || i18n_stored.get_value().t("section-capabilities")}</h2>
                     <div class="capabilities-list">
                         {if agent.capabilities.is_empty() {
-                            view! { <p class="text-muted">"No capabilities configured"</p> }.into_any()
+                            view! { <p class="text-muted">{move || i18n_stored.get_value().t("capabilities-empty")}</p> }.into_any()
                         } else {
                             view! {
                                 <div class="capabilities-list">
@@ -530,36 +537,36 @@ fn AgentDetailView(
                 </section>
 
                 <section class="card">
-                    <h2>"Recent Activity"</h2>
+                    <h2>{move || i18n_stored.get_value().t("section-recent-activity")}</h2>
                     <AgentActivityLog agent_id=agent.id.clone() />
                 </section>
             </div>
 
             <div class="agent-detail-sidebar">
                 <section class="card">
-                    <h3>"Quick Stats"</h3>
+                    <h3>{move || i18n_stored.get_value().t("section-quick-stats")}</h3>
                     <div class="quick-stats">
-                        <StatItem label="Status" value=format!("{:?}", agent.status) />
-                        <StatItem label="Tasks" value=agent.task_count.unwrap_or(0).to_string() />
+                        <StatItem label=i18n_stored.get_value().t("label-status") value=format!("{:?}", agent.status) />
+                        <StatItem label=i18n_stored.get_value().t("label-tasks") value=agent.task_count.unwrap_or(0).to_string() />
                         <StatItem
-                            label="Uptime"
+                            label=i18n_stored.get_value().t("label-uptime")
                             value=agent.uptime_percent.map(|u| format!("{:.1}%", u)).unwrap_or_else(|| "N/A".to_string())
                         />
                     </div>
                 </section>
 
                 <section class="card">
-                    <h3>"Actions"</h3>
+                    <h3>{move || i18n_stored.get_value().t("section-actions")}</h3>
                     <div class="action-list">
                         <button
                             class="btn btn-secondary btn-block"
                             on:click=move |_| on_view_logs.borrow_mut()()
                         >
-                            "View Logs"
+                            {move || i18n_stored.get_value().t("action-view-logs")}
                         </button>
-                        <button class="btn btn-secondary btn-block" on:click=move |_| on_configure.borrow_mut()()>"Configure"</button>
-                        <button class="btn btn-secondary btn-block" on:click=move |_| on_clone.borrow_mut()()>"Clone Agent"</button>
-                        <button class="btn btn-secondary btn-block" on:click=move |_| on_export.borrow_mut()()>"Export Config"</button>
+                        <button class="btn btn-secondary btn-block" on:click=move |_| on_configure.borrow_mut()()>{move || i18n_stored.get_value().t("action-configure")}</button>
+                        <button class="btn btn-secondary btn-block" on:click=move |_| on_clone.borrow_mut()()>{move || i18n_stored.get_value().t("action-clone-agent")}</button>
+                        <button class="btn btn-secondary btn-block" on:click=move |_| on_export.borrow_mut()()>{move || i18n_stored.get_value().t("action-export-config")}</button>
                     </div>
                 </section>
             </div>
@@ -568,7 +575,7 @@ fn AgentDetailView(
 }
 
 #[component]
-fn StatItem(#[prop(into)] label: String, #[prop(into)] value: String) -> impl IntoView {
+fn StatItem(label: String, #[prop(into)] value: String) -> impl IntoView {
     view! {
         <div class="stat-item">
             <span class="stat-label">{label}</span>
@@ -598,13 +605,16 @@ fn AgentDetailLoading() -> impl IntoView {
 
 #[component]
 fn AgentDetailError(#[prop(into)] message: String) -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     view! {
         <div class="error-state">
             <div class="error-icon">"⚠️"</div>
-            <h2>"Agent Not Found"</h2>
+            <h2>{move || i18n_stored.get_value().t("agent-not-found")}</h2>
             <p>{message}</p>
             <A href="/agents" attr:class="btn btn-primary">
-                "Back to Agents"
+                {move || i18n_stored.get_value().t("action-back-to-agents")}
             </A>
         </div>
     }
@@ -613,6 +623,8 @@ fn AgentDetailError(#[prop(into)] message: String) -> impl IntoView {
 #[component]
 fn AgentActivityLog(#[prop(into)] agent_id: String) -> impl IntoView {
     let app_state = use_app_state();
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
     let logs = LocalResource::new({
         let agent_id = agent_id.clone();
         move || {
@@ -624,14 +636,14 @@ fn AgentActivityLog(#[prop(into)] agent_id: String) -> impl IntoView {
 
     view! {
         <div class="activity-log">
-            <Suspense fallback=|| view! { <p class="text-muted">"Loading activity..."</p> }>
+            <Suspense fallback=move || view! { <p class="text-muted">{i18n_stored.get_value().t("activity-loading")}</p> }>
                 {move || {
                     let logs = logs.clone();
                     Suspend::new(async move {
                         match logs.await {
                             Ok(entries) => {
                                 if entries.is_empty() {
-                                    view! { <p class="text-muted">"No recent activity"</p> }.into_any()
+                                    view! { <p class="text-muted">{move || i18n_stored.get_value().t("activity-empty")}</p> }.into_any()
                                 } else {
                                     view! {
                                         <div class="activity-log">
@@ -645,7 +657,7 @@ fn AgentActivityLog(#[prop(into)] agent_id: String) -> impl IntoView {
                                     }.into_any()
                                 }
                             }
-                            Err(_) => view! { <p class="text-muted">"Unable to load activity logs"</p> }.into_any(),
+                            Err(_) => view! { <p class="text-muted">{move || i18n_stored.get_value().t("activity-load-error")}</p> }.into_any(),
                         }
                     })
                 }}

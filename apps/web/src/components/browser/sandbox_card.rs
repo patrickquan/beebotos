@@ -1,6 +1,7 @@
 //! 沙箱卡片组件
 
 use crate::browser::sandbox::{BrowserSandbox, SandboxStatus};
+use crate::i18n::I18nContext;
 use leptos::prelude::*;
 
 /// 沙箱卡片组件
@@ -11,6 +12,9 @@ pub fn SandboxCard(
     #[prop(optional)] on_stop: Option<Box<dyn Fn()>>,
     #[prop(optional)] on_delete: Option<Box<dyn Fn()>>,
 ) -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     let is_running = matches!(sandbox.status, SandboxStatus::Running);
 
     view! {
@@ -27,15 +31,15 @@ pub fn SandboxCard(
 
             <div class="sandbox-details">
                 <div class="detail-row">
-                    <span class="detail-label">"CDP Port:"</span>
+                    <span class="detail-label">{move || i18n_stored.get_value().t("sandbox-cdp-port")}</span>
                     <span class="detail-value">{sandbox.cdp_port}</span>
                 </div>
                 <div class="detail-row">
-                    <span class="detail-label">"Isolation:"</span>
+                    <span class="detail-label">{move || i18n_stored.get_value().t("sandbox-isolation")}</span>
                     <span class="detail-value">{format!("{:?}", sandbox.isolation)}</span>
                 </div>
                 <div class="detail-row">
-                    <span class="detail-label">"Memory:"</span>
+                    <span class="detail-label">{move || i18n_stored.get_value().t("sandbox-memory")}</span>
                     <span class="detail-value">{format!("{} MB", sandbox.resource_limits.memory_limit_mb)}</span>
                 </div>
             </div>
@@ -51,7 +55,7 @@ pub fn SandboxCard(
                                 }
                             }
                         >
-                            "Stop"
+                            {move || i18n_stored.get_value().t("sandbox-stop")}
                         </button>
                     }.into_any()
                 } else {
@@ -64,7 +68,7 @@ pub fn SandboxCard(
                                 }
                             }
                         >
-                            "Start"
+                            {move || i18n_stored.get_value().t("sandbox-start")}
                         </button>
                     }.into_any()
                 }}

@@ -1,5 +1,6 @@
 use crate::api::{AssetInfo, TransactionInfo, TransactionStatus, TransactionType, TreasuryInfo, TreasuryService};
 use crate::components::Modal;
+use crate::i18n::I18nContext;
 use leptos::task::spawn_local;
 use crate::state::use_app_state;
 use leptos::prelude::*;
@@ -74,6 +75,8 @@ fn format_usd(value: f64) -> String {
 #[component]
 pub fn TreasuryPage() -> impl IntoView {
     let app_state = use_app_state();
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
 
     // Fetch treasury data - use LocalResource for CSR
     let treasury = LocalResource::new(move || {
@@ -103,48 +106,50 @@ pub fn TreasuryPage() -> impl IntoView {
         let to = transfer_to.get();
         let amount = transfer_amount.get();
         if to.is_empty() || amount.is_empty() {
-            transfer_error.set(Some("Address and amount are required".to_string()));
+            transfer_error.set(Some(i18n_stored.get_value().t("treasury-transfer-required")));
             return;
         }
         transfer_saving.set(true);
         transfer_error.set(None);
         transfer_success.set(None);
         let service = service_stored.get_value();
+        let i18n = i18n_stored.clone();
         spawn_local(async move {
             match service.transfer(&to, &amount).await {
                 Ok(resp) => {
                     transfer_saving.set(false);
-                    transfer_success.set(Some(format!("Transfer submitted: {}", resp.get("tx_hash").and_then(|v| v.as_str()).unwrap_or("N/A"))));
+                    let tx_hash = resp.get("tx_hash").and_then(|v| v.as_str()).unwrap_or("N/A");
+                    transfer_success.set(Some(format!("{}: {}", i18n.get_value().t("treasury-transfer-submitted"), tx_hash)));
                     transfer_to.set(String::new());
                     transfer_amount.set(String::new());
                 }
                 Err(e) => {
                     transfer_saving.set(false);
-                    transfer_error.set(Some(format!("Transfer failed: {}", e)));
+                    transfer_error.set(Some(format!("{}: {}", i18n.get_value().t("treasury-transfer-failed"), e)));
                 }
             }
         });
     };
 
     view! {
-        <Title text="Treasury - BeeBotOS" />
+        <Title text={move || i18n_stored.get_value().t("treasury-page-title")} />
         <div class="page treasury-page">
             <div class="page-header">
                 <div class="breadcrumb-nav">
-                    <A href="/dao">"DAO"</A>
+                    <A href="/dao">{move || i18n_stored.get_value().t("nav-dao")}</A>
                     <span>"/"</span>
-                    <span>"Treasury"</span>
+                    <span>{move || i18n_stored.get_value().t("nav-treasury")}</span>
                 </div>
-                <h1>"DAO Treasury"</h1>
-                <p class="page-description">"Manage community funds with transparent, on-chain governance"</p>
+                <h1>{move || i18n_stored.get_value().t("treasury-title")}</h1>
+                <p class="page-description">{move || i18n_stored.get_value().t("treasury-subtitle")}</p>
             </div>
 
             <Suspense fallback=|| view! { <TreasuryLoading/> }>
                 {move || {
                     Suspend::new(async move {
                         match treasury.await {
-                            Ok(data) => view! { <TreasuryView data=data on_transfer=move || transfer_open.set(true)/> }.into_any(),
-                            Err(e) => view! { <TreasuryError message=e.to_string()/> }.into_any(),
+                            Ok(data) => view! { <TreasuryView data=data on_transfer=move || transfer_open.set(true) i18n=i18n_stored.get_value()/> }.into_any(),
+                            Err(e) => view! { <TreasuryError message=e.to_string() i18n=i18n_stored.get_value()/> }.into_any(),
                         }
                     })
                 }}
@@ -153,7 +158,7 @@ pub fn TreasuryPage() -> impl IntoView {
             // Transfer Modal
             {move || if transfer_open.get() {
                 view! {
-                    <Modal title="Transfer" on_close=move || transfer_open.set(false)>
+                    <Modal title=i18n_stored.get_value().t("treasury-transfer-title") on_close=move || transfer_open.set(false)>
                         <div class="modal-body">
                             {move || transfer_error.get().map(|msg| view! {
                                 <div class="alert alert-error">{msg}</div>
@@ -162,7 +167,7 @@ pub fn TreasuryPage() -> impl IntoView {
                                 <div class="alert alert-success">{msg}</div>
                             })}
                             <div class="form-group">
-                                <label>"To Address"</label>
+                                <label>{move || i18n_stored.get_value().t("treasury-transfer-to")}</label>
                                 <input
                                     type="text"
                                     prop:value=transfer_to
@@ -171,7 +176,7 @@ pub fn TreasuryPage() -> impl IntoView {
                                 />
                             </div>
                             <div class="form-group">
-                                <label>"Amount (wei)"</label>
+                                <label>{move || i18n_stored.get_value().t("treasury-transfer-amount")}</label>
                                 <input
                                     type="text"
                                     prop:value=transfer_amount
@@ -181,7 +186,7 @@ pub fn TreasuryPage() -> impl IntoView {
                             </div>
                         </div>
                         <div class="modal-footer">
-                            <button class="btn btn-secondary" on:click=move |_| transfer_open.set(false)>"Cancel"</button>
+                            <button class="btn btn-secondary" on:click=move |_| transfer_open.set(false)>{move || i18n_stored.get_value().t("action-cancel")}</button>
                             <button
                                 class="btn btn-primary"
                                 on:click={
@@ -190,7 +195,7 @@ pub fn TreasuryPage() -> impl IntoView {
                                 }
                                 disabled=transfer_saving
                             >
-                                {move || if transfer_saving.get() { "Submitting..." } else { "Submit Transfer" }}
+                                {move || if transfer_saving.get() { i18n_stored.get_value().t("treasury-transfer-submitting") } else { i18n_stored.get_value().t("treasury-transfer-submit") }}
                             </button>
                         </div>
                     </Modal>
@@ -203,23 +208,24 @@ pub fn TreasuryPage() -> impl IntoView {
 }
 
 #[component]
-fn TreasuryView(data: TreasuryInfo, on_transfer: impl Fn() + Clone + 'static) -> impl IntoView {
+fn TreasuryView(data: TreasuryInfo, on_transfer: impl Fn() + Clone + 'static, i18n: I18nContext) -> impl IntoView {
+    let i18n_stored = StoredValue::new(i18n);
     let on_transfer = std::rc::Rc::new(std::cell::RefCell::new(on_transfer));
     view! {
         <div class="treasury-content">
             <section class="treasury-overview">
                 <div class="total-balance-card">
                     <div class="balance-header">
-                        <span class="balance-label">"Total Treasury Balance"</span>
+                        <span class="balance-label">{move || i18n_stored.get_value().t("treasury-total-balance")}</span>
                         <span class="live-indicator">"● Live"</span>
                     </div>
                     <div class="balance-value">
                         {format_with_commas(data.total_balance, &data.token_symbol)}
                     </div>
                     <div class="balance-actions">
-                        <button class="btn btn-primary">"Deposit"</button>
-                        <button class="btn btn-secondary">"Withdraw"</button>
-                        <button class="btn btn-secondary" on:click=move |_| on_transfer.borrow_mut()()>"Transfer"</button>
+                        <button class="btn btn-primary">{move || i18n_stored.get_value().t("treasury-deposit")}</button>
+                        <button class="btn btn-secondary">{move || i18n_stored.get_value().t("treasury-withdraw")}</button>
+                        <button class="btn btn-secondary" on:click=move |_| on_transfer.borrow_mut()()>{move || i18n_stored.get_value().t("treasury-transfer")}</button>
                     </div>
                 </div>
             </section>
@@ -227,12 +233,12 @@ fn TreasuryView(data: TreasuryInfo, on_transfer: impl Fn() + Clone + 'static) ->
             <div class="treasury-grid">
                 <section class="card assets-section">
                     <div class="section-header">
-                        <h2>"Assets"</h2>
-                        <span class="asset-count">{format!("{} tokens", data.assets.len())}</span>
+                        <h2>{move || i18n_stored.get_value().t("treasury-assets")}</h2>
+                        <span class="asset-count">{format!("{} {}", data.assets.len(), i18n_stored.get_value().t("treasury-tokens"))}</span>
                     </div>
 
                     {move || if data.assets.is_empty() {
-                        view! { <AssetsEmpty/> }.into_any()
+                        view! { <AssetsEmpty i18n=i18n_stored.get_value()/> }.into_any()
                     } else {
                         view! {
                             <div class="assets-list">
@@ -246,14 +252,14 @@ fn TreasuryView(data: TreasuryInfo, on_transfer: impl Fn() + Clone + 'static) ->
 
                 <section class="card transactions-section">
                     <div class="section-header">
-                        <h2>"Recent Transactions"</h2>
+                        <h2>{move || i18n_stored.get_value().t("treasury-transactions")}</h2>
                         <A href="/dao/treasury/transactions" attr:class="btn btn-text">
-                            "View All →"
+                            {move || i18n_stored.get_value().t("treasury-view-all")}
                         </A>
                     </div>
 
                     {move || if data.recent_transactions.is_empty() {
-                        view! { <TransactionsEmpty/> }.into_any()
+                        view! { <TransactionsEmpty i18n=i18n_stored.get_value()/> }.into_any()
                     } else {
                         view! {
                             <div class="transactions-list">
@@ -267,27 +273,27 @@ fn TreasuryView(data: TreasuryInfo, on_transfer: impl Fn() + Clone + 'static) ->
             </div>
 
             <section class="card treasury-info">
-                <h3>"About the Treasury"</h3>
+                <h3>{move || i18n_stored.get_value().t("treasury-about-title")}</h3>
                 <div class="info-grid">
                     <div class="info-item">
                         <span class="info-icon">"🔒"</span>
                         <div>
-                            <h4>"Multi-Sig Protected"</h4>
-                            <p>"All withdrawals require multiple signatures from DAO council members"</p>
+                            <h4>{move || i18n_stored.get_value().t("treasury-about-multisig")}</h4>
+                            <p>{move || i18n_stored.get_value().t("treasury-about-multisig-desc")}</p>
                         </div>
                     </div>
                     <div class="info-item">
                         <span class="info-icon">"📊"</span>
                         <div>
-                            <h4>"Transparent"</h4>
-                            <p>"All transactions are recorded on-chain and publicly verifiable"</p>
+                            <h4>{move || i18n_stored.get_value().t("treasury-about-transparent")}</h4>
+                            <p>{move || i18n_stored.get_value().t("treasury-about-transparent-desc")}</p>
                         </div>
                     </div>
                     <div class="info-item">
                         <span class="info-icon">"⚡"</span>
                         <div>
-                            <h4>"Governance Controlled"</h4>
-                            <p>"Major allocations require community vote through DAO proposals"</p>
+                            <h4>{move || i18n_stored.get_value().t("treasury-about-governance")}</h4>
+                            <p>{move || i18n_stored.get_value().t("treasury-about-governance-desc")}</p>
                         </div>
                     </div>
                 </div>
@@ -350,20 +356,22 @@ fn TransactionRow(#[prop(into)] tx: TransactionInfo) -> impl IntoView {
 }
 
 #[component]
-fn AssetsEmpty() -> impl IntoView {
+fn AssetsEmpty(i18n: I18nContext) -> impl IntoView {
+    let i18n_stored = StoredValue::new(i18n);
     view! {
         <div class="empty-state-small">
-            <p class="text-muted">"No assets in treasury"</p>
-            <button class="btn btn-primary btn-sm">"Make First Deposit"</button>
+            <p class="text-muted">{move || i18n_stored.get_value().t("treasury-no-assets")}</p>
+            <button class="btn btn-primary btn-sm">{move || i18n_stored.get_value().t("treasury-first-deposit")}</button>
         </div>
     }
 }
 
 #[component]
-fn TransactionsEmpty() -> impl IntoView {
+fn TransactionsEmpty(i18n: I18nContext) -> impl IntoView {
+    let i18n_stored = StoredValue::new(i18n);
     view! {
         <div class="empty-state-small">
-            <p class="text-muted">"No recent transactions"</p>
+            <p class="text-muted">{move || i18n_stored.get_value().t("treasury-no-transactions")}</p>
         </div>
     }
 }
@@ -393,17 +401,18 @@ fn TreasuryLoading() -> impl IntoView {
 }
 
 #[component]
-fn TreasuryError(#[prop(into)] message: String) -> impl IntoView {
+fn TreasuryError(#[prop(into)] message: String, i18n: I18nContext) -> impl IntoView {
+    let i18n_stored = StoredValue::new(i18n);
     view! {
         <div class="error-state">
             <div class="error-icon">"⚠️"</div>
-            <h3>"Failed to load treasury"</h3>
+            <h3>{move || i18n_stored.get_value().t("treasury-error-title")}</h3>
             <p>{message}</p>
             <button
                 class="btn btn-primary"
                 on:click=move |_| { let _ = window().location().reload(); }
             >
-                "Retry"
+                {move || i18n_stored.get_value().t("treasury-error-retry")}
             </button>
         </div>
     }
@@ -413,6 +422,8 @@ fn TreasuryError(#[prop(into)] message: String) -> impl IntoView {
 #[component]
 pub fn TreasuryTransactionsPage() -> impl IntoView {
     let app_state = use_app_state();
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
 
     let treasury = LocalResource::new(move || {
         let service = app_state.treasury_service();
@@ -420,18 +431,18 @@ pub fn TreasuryTransactionsPage() -> impl IntoView {
     });
 
     view! {
-        <Title text="Treasury Transactions - BeeBotOS" />
+        <Title text={move || i18n_stored.get_value().t("treasury-tx-page-title")} />
         <div class="page treasury-page">
             <div class="page-header">
                 <div class="breadcrumb-nav">
-                    <A href="/dao">"DAO"</A>
+                    <A href="/dao">{move || i18n_stored.get_value().t("nav-dao")}</A>
                     <span>"/"</span>
-                    <A href="/dao/treasury">"Treasury"</A>
+                    <A href="/dao/treasury">{move || i18n_stored.get_value().t("nav-treasury")}</A>
                     <span>"/"</span>
-                    <span>"Transactions"</span>
+                    <span>{move || i18n_stored.get_value().t("treasury-transactions")}</span>
                 </div>
-                <h1>"Transaction History"</h1>
-                <p class="page-description">"All treasury transactions are recorded on-chain"</p>
+                <h1>{move || i18n_stored.get_value().t("treasury-tx-title")}</h1>
+                <p class="page-description">{move || i18n_stored.get_value().t("treasury-tx-desc")}</p>
             </div>
 
             <Suspense fallback=|| view! { <TreasuryLoading/> }>
@@ -441,11 +452,11 @@ pub fn TreasuryTransactionsPage() -> impl IntoView {
                             Ok(data) => view! {
                                 <section class="card transactions-section">
                                     <div class="section-header">
-                                        <h2>"All Transactions"</h2>
-                                        <span class="transaction-count">{format!("{} total", data.recent_transactions.len())}</span>
+                                        <h2>{move || i18n_stored.get_value().t("treasury-all-transactions")}</h2>
+                                        <span class="transaction-count">{format!("{} {}", data.recent_transactions.len(), i18n_stored.get_value().t("treasury-tx-total"))}</span>
                                     </div>
                                     {if data.recent_transactions.is_empty() {
-                                        view! { <TransactionsEmpty/> }.into_any()
+                                        view! { <TransactionsEmpty i18n=i18n_stored.get_value()/> }.into_any()
                                     } else {
                                         view! {
                                             <div class="transactions-list">
@@ -457,7 +468,7 @@ pub fn TreasuryTransactionsPage() -> impl IntoView {
                                     }}
                                 </section>
                             }.into_any(),
-                            Err(e) => view! { <TreasuryError message=e.to_string()/> }.into_any(),
+                            Err(e) => view! { <TreasuryError message=e.to_string() i18n=i18n_stored.get_value()/> }.into_any(),
                         }
                     })
                 }}

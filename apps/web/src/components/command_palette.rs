@@ -3,9 +3,9 @@
 //! Provides a quick command interface similar to VS Code's command palette
 //! or OpenClaw's command panel.
 
-use leptos::prelude::*;
-
+use crate::i18n::I18nContext;
 use crate::state::use_app_state;
+use leptos::prelude::*;
 use leptos_router::hooks::use_navigate;
 
 /// Command palette item
@@ -38,6 +38,8 @@ pub fn CommandPalette() -> impl IntoView {
     let search_query = RwSignal::new(String::new());
     let selected_index = RwSignal::new(0);
     let navigate = use_navigate();
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
 
     // Define available commands
     let commands = vec![
@@ -170,7 +172,7 @@ pub fn CommandPalette() -> impl IntoView {
                 class="command-palette-shortcut-hint"
                 on:keydown=handle_keydown
             >
-                <span class="hint">"Press Ctrl+K for commands"</span>
+                <span class="hint">{move || i18n_stored.get_value().t("cmd-palette-hint")}</span>
             </div>
 
             <Show when=move || is_open.get()>
@@ -186,7 +188,7 @@ pub fn CommandPalette() -> impl IntoView {
                             <input
                                 type="text"
                                 class="command-palette-input"
-                                placeholder="Type a command or search..."
+                                placeholder=move || i18n_stored.get_value().t("cmd-palette-placeholder")
                                 prop:value=search_query
                                 on:input=move |e| {
                                     search_query.set(event_target_value(&e));
@@ -224,7 +226,7 @@ pub fn CommandPalette() -> impl IntoView {
                                 if cmds.is_empty() {
                                     view! {
                                         <div class="command-palette-empty">
-                                            "No commands found"
+                                            {move || i18n_stored.get_value().t("cmd-palette-empty")}
                                         </div>
                                     }.into_any()
                                 } else {
@@ -269,12 +271,14 @@ pub fn CommandPalette() -> impl IntoView {
 #[component]
 pub fn CommandPaletteButton() -> impl IntoView {
     let is_open = RwSignal::new(false);
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
 
     view! {
         <button
             class="btn btn-icon command-palette-btn"
             on:click=move |_| is_open.update(|v| *v = !*v)
-            title="Open Command Palette"
+            title=move || i18n_stored.get_value().t("cmd-palette-open")
         >
             "⌘"
         </button>

@@ -6,6 +6,7 @@
 //! - Permission-based access control
 //! - Route-level authorization
 
+use crate::i18n::I18nContext;
 use crate::state::auth::{use_auth_state, Permission, Role};
 use gloo_storage::Storage;
 use leptos::prelude::*;
@@ -46,7 +47,9 @@ pub fn AuthGuard(children: ChildrenFn) -> impl IntoView {
         if is_authenticated.get() {
             children.clone()().into_any()
         } else {
-            view! { <Redirecting message="Checking authentication..." /> }.into_any()
+            let i18n = use_context::<I18nContext>().expect("i18n context not found");
+            let i18n_stored = StoredValue::new(i18n);
+            view! { <Redirecting message=move || i18n_stored.get_value().t("auth-checking") /> }.into_any()
         }
     }
 }
@@ -255,18 +258,20 @@ pub fn GuestOnly(children: ChildrenFn) -> impl IntoView {
         if is_guest.get() {
             children.clone()().into_any()
         } else {
-            view! { <Redirecting message="Redirecting..." /> }.into_any()
+            let i18n = use_context::<I18nContext>().expect("i18n context not found");
+            let i18n_stored = StoredValue::new(i18n);
+            view! { <Redirecting message=move || i18n_stored.get_value().t("redirecting") /> }.into_any()
         }
     }
 }
 
 /// Loading indicator during auth check
 #[component]
-fn Redirecting(#[prop(default = "Redirecting...")] message: &'static str) -> impl IntoView {
+fn Redirecting(#[prop(into)] message: Signal<String>) -> impl IntoView {
     view! {
         <div class="redirecting">
             <div class="spinner"></div>
-            <p>{message}</p>
+            <p>{move || message.get()}</p>
         </div>
     }
 }
@@ -274,15 +279,18 @@ fn Redirecting(#[prop(default = "Redirecting...")] message: &'static str) -> imp
 /// Access denied component
 #[component]
 pub fn AccessDenied() -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     view! {
         <div class="access-denied">
             <div class="access-denied-icon">"🚫"</div>
             <h1>"403"</h1>
-            <h2>"Access Denied"</h2>
-            <p>"You don't have permission to access this page."</p>
+            <h2>{move || i18n_stored.get_value().t("error-access-denied")}</h2>
+            <p>{move || i18n_stored.get_value().t("error-access-denied-desc")}</p>
             <div class="access-denied-actions">
-                <a href="/" class="btn btn-primary">"Go Home"</a>
-                <a href="/contact" class="btn btn-secondary">"Contact Support"</a>
+                <a href="/" class="btn btn-primary">{move || i18n_stored.get_value().t("error-go-home")}</a>
+                <a href="/contact" class="btn btn-secondary">{move || i18n_stored.get_value().t("contact-support")}</a>
             </div>
         </div>
     }

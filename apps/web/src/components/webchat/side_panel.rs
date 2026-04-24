@@ -1,5 +1,6 @@
 //! 侧边提问面板组件
 
+use crate::i18n::I18nContext;
 use crate::utils::event_target_value;
 use crate::webchat::SideQuestion;
 use leptos::prelude::*;
@@ -12,6 +13,9 @@ pub fn SidePanel(
     #[prop(optional)] on_close: Option<Box<dyn Fn()>>,
     #[prop(optional)] on_new_question: Option<Box<dyn Fn(String)>>,
 ) -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     let is_open = is_open.unwrap_or(true);
     let (new_question, set_new_question) = signal(String::new());
 
@@ -31,7 +35,7 @@ pub fn SidePanel(
         } else {
             view! { <aside class="side-panel">
             <div class="side-panel-header">
-                <h4>"Side Questions"</h4>
+                <h4>{move || i18n_stored.get_value().t("side-panel-title")}</h4>
                 <button
                     class="btn btn-icon"
                     on:click=move |_| {
@@ -48,8 +52,8 @@ pub fn SidePanel(
                 {if questions.is_empty() {
                     view! {
                         <div class="empty-side-questions">
-                            <p>"No side questions yet"</p>
-                            <p>"Use /btw to ask a side question"</p>
+                            <p>{move || i18n_stored.get_value().t("side-panel-empty-title")}</p>
+                            <p>{move || i18n_stored.get_value().t("side-panel-empty-hint")}</p>
                         </div>
                     }.into_any()
                 } else {
@@ -71,7 +75,7 @@ pub fn SidePanel(
                 <div class="new-question-input">
                     <input
                         type="text"
-                        placeholder="Ask a side question..."
+                        placeholder={move || i18n_stored.get_value().t("side-panel-input-placeholder")}
                         prop:value=new_question
                         on:input=move |ev| {
                             set_new_question.set(event_target_value(&ev));
@@ -82,7 +86,7 @@ pub fn SidePanel(
                         disabled=move || new_question.get().trim().is_empty()
                         on:click=on_submit
                     >
-                        "Ask"
+                        {move || i18n_stored.get_value().t("side-panel-ask-button")}
                     </button>
                 </div>
             </div>
@@ -119,5 +123,3 @@ fn SideQuestionItem(question: SideQuestion) -> impl IntoView {
         </div>
     }
 }
-
-

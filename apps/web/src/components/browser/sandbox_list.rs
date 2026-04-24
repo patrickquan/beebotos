@@ -1,6 +1,7 @@
 //! 沙箱列表组件
 
 use crate::browser::sandbox::BrowserSandbox;
+use crate::i18n::I18nContext;
 use leptos::prelude::*;
 
 /// 沙箱列表组件
@@ -70,6 +71,9 @@ fn SandboxListItem(
 ) -> impl IntoView {
     use crate::browser::sandbox::SandboxStatus;
 
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     let is_running = matches!(sandbox.status, SandboxStatus::Running);
 
     view! {
@@ -80,7 +84,7 @@ fn SandboxListItem(
             <div class="sandbox-info">
                 <div class="sandbox-name">{sandbox.name.clone()}</div>
                 <div class="sandbox-meta">
-                    {format!("Port: {} | Memory: {} MB", 
+                    {format!("Port: {} | Memory: {} MB",
                         sandbox.cdp_port,
                         sandbox.resource_limits.memory_limit_mb
                     )}
@@ -96,7 +100,7 @@ fn SandboxListItem(
                                 on_stop.run(());
                             }
                         >
-                            "Stop"
+                            {move || i18n_stored.get_value().t("sandbox-stop")}
                         </button>
                     }.into_any()
                 } else {
@@ -107,7 +111,7 @@ fn SandboxListItem(
                                 on_start.run(());
                             }
                         >
-                            "Start"
+                            {move || i18n_stored.get_value().t("sandbox-start")}
                         </button>
                     }.into_any()
                 }}
@@ -118,7 +122,7 @@ fn SandboxListItem(
                         on_delete.run(());
                     }
                 >
-                    "Delete"
+                    {move || i18n_stored.get_value().t("sandbox-delete")}
                 </button>
             </div>
         </div>

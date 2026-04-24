@@ -1,5 +1,6 @@
 use crate::api::{CreateProposalRequest, DaoSummary, ProposalInfo, ProposalStatus};
 use crate::components::Modal;
+use crate::i18n::I18nContext;
 use crate::state::notification::NotificationType;
 use crate::state::use_app_state;
 use leptos::prelude::*;
@@ -13,6 +14,9 @@ pub fn DaoPage() -> impl IntoView {
     let app_state = use_app_state();
     let app_state_clone1 = app_state.clone();
     let app_state_clone2 = app_state.clone();
+
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
 
     // Fetch DAO summary - use LocalResource for CSR
     let dao_summary = LocalResource::new(move || {
@@ -60,22 +64,22 @@ pub fn DaoPage() -> impl IntoView {
                 }
                 Err(e) => {
                     create_saving.set(false);
-                    create_error.set(Some(format!("Failed to create proposal: {}", e)));
+                    create_error.set(Some(format!("{}: {}", i18n_stored.get_value().t("dao-create-failed"), e)));
                 }
             }
         });
     };
 
     view! {
-        <Title text="DAO Governance - BeeBotOS" />
+        <Title text={move || format!("{} - BeeBotOS", i18n_stored.get_value().t("dao-title"))} />
         <div class="page dao-page">
             <div class="page-header">
                 <div>
-                    <h1>"DAO Governance"</h1>
-                    <p class="page-description">"Participate in community-driven decision making"</p>
+                    <h1>{move || i18n_stored.get_value().t("dao-title")}</h1>
+                    <p class="page-description">{move || i18n_stored.get_value().t("dao-subtitle")}</p>
                 </div>
                 <A href="/dao/treasury" attr:class="btn btn-secondary">
-                    "View Treasury →"
+                    {move || i18n_stored.get_value().t("dao-view-treasury")}
                 </A>
             </div>
 
@@ -90,8 +94,8 @@ pub fn DaoPage() -> impl IntoView {
 
             <section class="proposals-section">
                 <div class="section-header">
-                    <h2>"Governance Proposals"</h2>
-                    <button class="btn btn-primary" on:click=move |_| create_open.set(true)>"+ New Proposal"</button>
+                    <h2>{move || i18n_stored.get_value().t("dao-governance-proposals")}</h2>
+                    <button class="btn btn-primary" on:click=move |_| create_open.set(true)>{move || format!("+ {}", i18n_stored.get_value().t("dao-create-proposal"))}</button>
                 </div>
 
                 // Create Proposal Modal
@@ -99,43 +103,43 @@ pub fn DaoPage() -> impl IntoView {
                     let on_create = on_create.clone();
                     if create_open.get() {
                     view! {
-                        <Modal title="Create Proposal" on_close=move || create_open.set(false)>
+                        <Modal title=i18n_stored.get_value().t("modal-create-proposal-title") on_close=move || create_open.set(false)>
                             <div class="modal-body">
                                 {move || create_error.get().map(|msg| view! {
                                     <div class="alert alert-error">{msg}</div>
                                 })}
                                 <div class="form-group">
-                                    <label>"Title"</label>
+                                    <label>{move || i18n_stored.get_value().t("label-title")}</label>
                                     <input
                                         type="text"
                                         prop:value=create_title
                                         on:input=move |e| create_title.set(event_target_value(&e))
-                                        placeholder="Proposal title"
+                                        placeholder={move || i18n_stored.get_value().t("placeholder-proposal-title")}
                                     />
                                 </div>
                                 <div class="form-group">
-                                    <label>"Description"</label>
+                                    <label>{move || i18n_stored.get_value().t("label-description")}</label>
                                     <textarea
                                         prop:value=create_desc
                                         on:input=move |e| create_desc.set(event_target_value(&e))
-                                        placeholder="Describe your proposal..."
+                                        placeholder={move || i18n_stored.get_value().t("placeholder-proposal-desc")}
                                     />
                                 </div>
                                 <div class="form-group">
-                                    <label>"Type"</label>
+                                    <label>{move || i18n_stored.get_value().t("label-type")}</label>
                                     <select
                                         prop:value=create_type
                                         on:change=move |e| create_type.set(event_target_value(&e))
                                     >
-                                        <option value="general">"General"</option>
-                                        <option value="funding">"Funding"</option>
-                                        <option value="upgrade">"Upgrade"</option>
-                                        <option value="parameter">"Parameter"</option>
+                                        <option value="general">{move || i18n_stored.get_value().t("proposal-type-general")}</option>
+                                        <option value="funding">{move || i18n_stored.get_value().t("proposal-type-funding")}</option>
+                                        <option value="upgrade">{move || i18n_stored.get_value().t("proposal-type-upgrade")}</option>
+                                        <option value="parameter">{move || i18n_stored.get_value().t("proposal-type-parameter")}</option>
                                     </select>
                                 </div>
                             </div>
                             <div class="modal-footer">
-                                <button class="btn btn-secondary" on:click=move |_| create_open.set(false)>"Cancel"</button>
+                                <button class="btn btn-secondary" on:click=move |_| create_open.set(false)>{move || i18n_stored.get_value().t("action-cancel")}</button>
                                 <button
                                     class="btn btn-primary"
                                     on:click={
@@ -144,7 +148,7 @@ pub fn DaoPage() -> impl IntoView {
                                     }
                                     disabled=create_saving
                                 >
-                                    {move || if create_saving.get() { "Creating..." } else { "Create Proposal" }}
+                                    {move || if create_saving.get() { i18n_stored.get_value().t("action-creating") } else { i18n_stored.get_value().t("dao-create-proposal") }}
                                 </button>
                             </div>
                         </Modal>
@@ -166,7 +170,7 @@ pub fn DaoPage() -> impl IntoView {
                             }
                             Err(e) => view! {
                                 <div class="error-message">
-                                    {"Failed to load proposals: "}{e.to_string()}
+                                    {format!("{}: {}", i18n_stored.get_value().t("dao-load-proposals-failed"), e.to_string())}
                                 </div>
                             }.into_any(),
                         }
@@ -179,26 +183,29 @@ pub fn DaoPage() -> impl IntoView {
 
 #[component]
 fn DaoSummaryView(summary: DaoSummary) -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     view! {
         <section class="dao-summary">
             <div class="stat-card">
                 <div class="stat-value">{summary.member_count}</div>
-                <div class="stat-label">"DAO Members"</div>
+                <div class="stat-label">{move || i18n_stored.get_value().t("dao-members")}</div>
             </div>
             <div class="stat-card">
                 <div class="stat-value">{summary.active_proposals}</div>
-                <div class="stat-label">"Active Proposals"</div>
+                <div class="stat-label">{move || i18n_stored.get_value().t("dao-active-proposals")}</div>
             </div>
             <div class="stat-card">
                 <div class="stat-value">{summary.user_voting_power}</div>
                 <div class="stat-label">
-                    {format!("Your Voting Power ({})", summary.token_symbol)}
+                    {format!("{} ({})", i18n_stored.get_value().t("dao-your-voting-power"), summary.token_symbol)}
                 </div>
             </div>
             <div class="stat-card">
                 <div class="stat-value">{summary.token_balance}</div>
                 <div class="stat-label">
-                    {format!("Your Balance ({})", summary.token_symbol)}
+                    {format!("{} ({})", i18n_stored.get_value().t("dao-your-balance"), summary.token_symbol)}
                 </div>
             </div>
         </section>
@@ -207,23 +214,26 @@ fn DaoSummaryView(summary: DaoSummary) -> impl IntoView {
 
 #[component]
 fn DaoSummaryPlaceholder() -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     view! {
         <section class="dao-summary">
             <div class="stat-card skeleton">
                 <div class="stat-value">"-"</div>
-                <div class="stat-label">"DAO Members"</div>
+                <div class="stat-label">{move || i18n_stored.get_value().t("dao-members")}</div>
             </div>
             <div class="stat-card skeleton">
                 <div class="stat-value">"-"</div>
-                <div class="stat-label">"Active Proposals"</div>
+                <div class="stat-label">{move || i18n_stored.get_value().t("dao-active-proposals")}</div>
             </div>
             <div class="stat-card skeleton">
                 <div class="stat-value">"-"</div>
-                <div class="stat-label">"Your Voting Power"</div>
+                <div class="stat-label">{move || i18n_stored.get_value().t("dao-your-voting-power")}</div>
             </div>
             <div class="stat-card skeleton">
                 <div class="stat-value">"-"</div>
-                <div class="stat-label">"Your Balance"</div>
+                <div class="stat-label">{move || i18n_stored.get_value().t("dao-your-balance")}</div>
             </div>
         </section>
     }
@@ -236,6 +246,8 @@ fn DaoSummaryLoading() -> impl IntoView {
 
 #[component]
 fn ProposalsList(proposals: Vec<ProposalInfo>) -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
     let (active, other): (Vec<_>, Vec<_>) = proposals
         .into_iter()
         .partition(|p| matches!(p.status, ProposalStatus::Active));
@@ -245,7 +257,7 @@ fn ProposalsList(proposals: Vec<ProposalInfo>) -> impl IntoView {
             {move || if !active.is_empty() {
                 view! {
                     <div class="proposals-group">
-                        <h3>"Active Proposals"</h3>
+                        <h3>{move || i18n_stored.get_value().t("dao-active-proposals")}</h3>
                         <div class="proposals-list">
                             {active.clone().into_iter().map(|p| view! { <ProposalCard proposal=p/> }).collect::<Vec<_>>()}
                         </div>
@@ -258,7 +270,7 @@ fn ProposalsList(proposals: Vec<ProposalInfo>) -> impl IntoView {
             {move || if !other.is_empty() {
                 view! {
                     <div class="proposals-group">
-                        <h3>"Past Proposals"</h3>
+                        <h3>{move || i18n_stored.get_value().t("dao-past-proposals")}</h3>
                         <div class="proposals-list">
                             {other.clone().into_iter().map(|p| view! { <ProposalCard proposal=p/> }).collect::<Vec<_>>()}
                         </div>
@@ -274,6 +286,8 @@ fn ProposalsList(proposals: Vec<ProposalInfo>) -> impl IntoView {
 #[component]
 fn ProposalCard(#[prop(into)] proposal: ProposalInfo) -> impl IntoView {
     let _app_state = use_app_state();
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
     let status_class = match proposal.status {
         ProposalStatus::Active => "status-active",
         ProposalStatus::Passed => "status-passed",
@@ -304,8 +318,8 @@ fn ProposalCard(#[prop(into)] proposal: ProposalInfo) -> impl IntoView {
                     </span>
                 </div>
                 <div class="proposal-meta">
-                    <span>"By "{proposal.proposer.clone()}</span>
-                    <span>"Ends: "{proposal.ends_at.clone()}</span>
+                    <span>{format!("{} {}", i18n_stored.get_value().t("proposal-by"), proposal.proposer.clone())}</span>
+                    <span>{format!("{}: {}", i18n_stored.get_value().t("dao-voting-ends"), proposal.ends_at.clone())}</span>
                 </div>
             </div>
 
@@ -337,6 +351,8 @@ fn ProposalVotingSection(
     is_voting: RwSignal<bool>,
 ) -> impl IntoView {
     let _app_state = use_app_state();
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
     let total_votes = votes_for + votes_against;
     let for_percent = if total_votes > 0 {
         (votes_for as f64 / total_votes as f64) * 100.0
@@ -353,8 +369,8 @@ fn ProposalVotingSection(
                 ></div>
             </div>
             <div class="vote-stats">
-                <span>{format!("{} For", votes_for)}</span>
-                <span>{format!("{} Against", votes_against)}</span>
+                <span>{format!("{} {}", votes_for, i18n_stored.get_value().t("dao-votes-for"))}</span>
+                <span>{format!("{} {}", votes_against, i18n_stored.get_value().t("dao-votes-against"))}</span>
             </div>
 
             {move || {
@@ -381,9 +397,9 @@ fn ProposalVotingSection(
                         view! {
                             <div class="voted-badge">
                                 {if voted == Some(true) {
-                                    "✓ You voted For".into_any()
+                                    format!("✓ {}", i18n_stored.get_value().t("voted-for")).into_any()
                                 } else {
-                                    "✓ You voted Against".into_any()
+                                    format!("✓ {}", i18n_stored.get_value().t("voted-against")).into_any()
                                 }}
                             </div>
                         }.into_any()
@@ -404,12 +420,14 @@ fn VoteButton(
     user_voted: RwSignal<Option<bool>>,
 ) -> impl IntoView {
     let app_state = use_app_state();
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
     let btn_class = if vote_for {
         "btn btn-success"
     } else {
         "btn btn-danger"
     };
-    let label = if vote_for { "Vote For" } else { "Vote Against" };
+    let label = if vote_for { i18n_stored.get_value().t("dao-vote-for") } else { i18n_stored.get_value().t("dao-vote-against") };
 
     view! {
         <button
@@ -428,16 +446,16 @@ fn VoteButton(
                                 user_voted.set(Some(vote_for));
                                 app_state.notify(
                                     NotificationType::Success,
-                                    "Vote Submitted",
-                                    "Your vote has been recorded successfully"
+                                    &i18n_stored.get_value().t("notification-vote-submitted"),
+                                    i18n_stored.get_value().t("notification-vote-submitted-desc")
                                 );
                                 dao_service.invalidate_proposals_cache();
                             }
                             Err(e) => {
                                 app_state.notify(
                                     NotificationType::Error,
-                                    "Vote Failed",
-                                    format!("Failed to submit vote: {}", e)
+                                    &i18n_stored.get_value().t("notification-vote-failed"),
+                                    format!("{}: {}", i18n_stored.get_value().t("notification-vote-failed-desc"), e)
                                 );
                             }
                         }
@@ -447,9 +465,9 @@ fn VoteButton(
             }
         >
             {move || if is_voting.get() {
-                if vote_for { "Voting..." } else { "Voting..." }
+                i18n_stored.get_value().t("action-voting")
             } else {
-                label
+                label.clone()
             }}
         </button>
     }
@@ -473,11 +491,14 @@ fn ProposalsLoading() -> impl IntoView {
 
 #[component]
 fn ProposalsEmpty() -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     view! {
         <div class="empty-state">
             <div class="empty-icon">"🏛️"</div>
-            <h3>"No proposals yet"</h3>
-            <p>"Be the first to create a governance proposal"</p>
+            <h3>{move || i18n_stored.get_value().t("proposals-empty-title")}</h3>
+            <p>{move || i18n_stored.get_value().t("proposals-empty-desc")}</p>
         </div>
     }
 }

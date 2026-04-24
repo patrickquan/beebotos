@@ -1,5 +1,6 @@
 //! 用量面板组件
 
+use crate::i18n::I18nContext;
 use crate::webchat::{TokenUsage, UsagePanel};
 use leptos::prelude::*;
 
@@ -17,6 +18,9 @@ pub fn UsagePanelComponent(
     #[prop(optional)] is_open: Option<bool>,
     #[prop(optional)] on_close: Option<Box<dyn Fn()>>,
 ) -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     let is_open = is_open.unwrap_or(true);
 
     view! {
@@ -25,7 +29,7 @@ pub fn UsagePanelComponent(
         } else {
             view! { <div class="usage-panel">
             <div class="usage-panel-header">
-                <h4>"Token Usage"</h4>
+                <h4>{move || i18n_stored.get_value().t("usage-panel-title")}</h4>
                 <button
                     class="btn btn-icon"
                     on:click=move |_| {
@@ -40,15 +44,15 @@ pub fn UsagePanelComponent(
 
             <div class="usage-stats">
                 <UsageStatItem
-                    label="Session"
+                    label=i18n_stored.get_value().t("usage-panel-session")
                     usage=usage.session_usage.clone()
                 />
                 <UsageStatItem
-                    label="Daily"
+                    label=i18n_stored.get_value().t("usage-panel-daily")
                     usage=usage.daily_usage.clone()
                 />
                 <UsageStatItem
-                    label="Monthly"
+                    label=i18n_stored.get_value().t("usage-panel-monthly")
                     usage=usage.monthly_usage.clone()
                 />
             </div>
@@ -56,11 +60,11 @@ pub fn UsagePanelComponent(
             {if usage.limit_status.has_limit {
                 view! {
                     <div class="limit-status">
-                        <h5>"Limits"</h5>
+                        <h5>{move || i18n_stored.get_value().t("usage-panel-limits")}</h5>
                         {if let Some(remaining) = usage.limit_status.daily_remaining {
                             view! {
                                 <div class="limit-item">
-                                    <span>"Daily Remaining:"</span>
+                                    <span>{move || i18n_stored.get_value().t("usage-panel-daily-remaining")}</span>
                                     <span>{remaining.to_string()}</span>
                                 </div>
                             }.into_any()
@@ -70,7 +74,7 @@ pub fn UsagePanelComponent(
                         {if let Some(remaining) = usage.limit_status.monthly_remaining {
                             view! {
                                 <div class="limit-item">
-                                    <span>"Monthly Remaining:"</span>
+                                    <span>{move || i18n_stored.get_value().t("usage-panel-monthly-remaining")}</span>
                                     <span>{remaining.to_string()}</span>
                                 </div>
                             }.into_any()
@@ -80,7 +84,7 @@ pub fn UsagePanelComponent(
                         {if usage.limit_status.is_near_limit {
                             view! {
                                 <div class="limit-warning">
-                                    "⚠️ Approaching limit"
+                                    {move || i18n_stored.get_value().t("usage-panel-approaching-limit")}
                                 </div>
                             }.into_any()
                         } else {
@@ -98,7 +102,10 @@ pub fn UsagePanelComponent(
 
 /// 用量统计项组件
 #[component]
-fn UsageStatItem(label: &'static str, usage: TokenUsage) -> impl IntoView {
+fn UsageStatItem(label: String, usage: TokenUsage) -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     view! {
         <div class="usage-stat-item">
             <div class="stat-header">
@@ -107,8 +114,8 @@ fn UsageStatItem(label: &'static str, usage: TokenUsage) -> impl IntoView {
             </div>
             <div class="stat-value">{usage.format()}</div>
             <div class="stat-details">
-                <span>{format!("Prompt: {}", usage.prompt_tokens)}</span>
-                <span>{format!("Completion: {}", usage.completion_tokens)}</span>
+                <span>{move || i18n_stored.get_value().t("usage-panel-prompt").replace("{}", &usage.prompt_tokens.to_string())}</span>
+                <span>{move || i18n_stored.get_value().t("usage-panel-completion").replace("{}", &usage.completion_tokens.to_string())}</span>
             </div>
         </div>
     }

@@ -1,5 +1,6 @@
 //! 会话项组件
 
+use crate::i18n::I18nContext;
 use crate::webchat::ChatSession;
 use leptos::prelude::*;
 
@@ -12,6 +13,9 @@ pub fn SessionItem(
     #[prop(optional)] on_pin: Option<Box<dyn Fn()>>,
     #[prop(optional)] on_delete: Option<Box<dyn Fn()>>,
 ) -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     let is_selected = is_selected.unwrap_or(false);
 
     view! {
@@ -41,7 +45,7 @@ pub fn SessionItem(
                 </div>
 
                 <div class="session-stats">
-                    <span>{format!("{} messages", session.messages.len())}</span>
+                    <span>{move || i18n_stored.get_value().t("session-messages-count").replace("{}", &session.messages.len().to_string())}</span>
                     {if session.total_token_usage.total_tokens > 0 {
                         view! {
                             <span class="token-count">

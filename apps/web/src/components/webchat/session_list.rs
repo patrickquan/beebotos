@@ -1,5 +1,6 @@
 //! 会话列表组件
 
+use crate::i18n::I18nContext;
 use crate::webchat::ChatSession;
 use leptos::prelude::*;
 
@@ -11,10 +12,13 @@ pub fn SessionList(
     #[prop(optional)] on_select: Option<std::sync::Arc<dyn Fn(String) + Send + Sync>>,
     #[prop(optional)] on_new: Option<std::sync::Arc<dyn Fn() + Send + Sync>>,
 ) -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     view! {
         <div class="session-list-container">
             <div class="session-list-header">
-                <h3>"Sessions"</h3>
+                <h3>{move || i18n_stored.get_value().t("session-list-title")}</h3>
                 <button
                     class="btn btn-primary btn-sm"
                     on:click={
@@ -26,7 +30,7 @@ pub fn SessionList(
                         }
                     }
                 >
-                    "+ New"
+                    {move || i18n_stored.get_value().t("session-list-new")}
                 </button>
             </div>
 
@@ -47,8 +51,8 @@ pub fn SessionList(
                     if sorted_sessions.is_empty() {
                         view! {
                             <div class="empty-sessions">
-                                <p>"No sessions yet"</p>
-                                <p>"Click 'New' to start chatting"</p>
+                                <p>{move || i18n_stored.get_value().t("session-list-empty-title")}</p>
+                                <p>{move || i18n_stored.get_value().t("session-list-empty-hint")}</p>
                             </div>
                         }.into_any()
                     } else {
@@ -97,6 +101,9 @@ fn SessionListItem(
     is_active: bool,
     #[prop(into)] on_select: Callback<()>,
 ) -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     let class = format!(
         "session-list-item {} {}",
         if is_selected { "selected" } else { "" },
@@ -132,7 +139,7 @@ fn SessionListItem(
                 </div>
                 <div class="session-preview">{preview}</div>
                 <div class="session-meta">
-                    <span>{format!("{} messages", session.messages.len())}</span>
+                    <span>{move || i18n_stored.get_value().t("session-messages-count").replace("{}", &session.messages.len().to_string())}</span>
                     <span>{format_timestamp(&session.updated_at)}</span>
                 </div>
             </div>

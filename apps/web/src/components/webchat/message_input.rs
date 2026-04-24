@@ -1,5 +1,6 @@
 //! 消息输入组件
 
+use crate::i18n::I18nContext;
 use crate::utils::event_target_value;
 use leptos::prelude::*;
 
@@ -11,7 +12,10 @@ pub fn MessageInput(
     #[prop(optional)] on_submit: Option<Box<dyn Fn(String)>>,
     #[prop(optional)] on_typing: Option<Box<dyn Fn(String)>>,
 ) -> impl IntoView {
-    let placeholder = placeholder.unwrap_or_else(|| "Type a message...".to_string());
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
+    let placeholder = placeholder.unwrap_or_else(|| i18n_stored.get_value().t("message-input-placeholder"));
     let disabled = disabled.unwrap_or(false);
     let (value, set_value) = signal(String::new());
 
@@ -91,11 +95,9 @@ pub fn MessageInput(
             </div>
 
             <div class="input-hints">
-                <span>"Press Enter to send, Shift+Enter for new line"</span>
-                <span>"Use /btw for side question"</span>
+                <span>{move || i18n_stored.get_value().t("message-input-hint-send")}</span>
+                <span>{move || i18n_stored.get_value().t("message-input-hint-btw")}</span>
             </div>
         </div>
     }
 }
-
-

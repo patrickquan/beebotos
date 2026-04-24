@@ -1,3 +1,4 @@
+use crate::i18n::I18nContext;
 use leptos::prelude::*;
 use leptos::view;
 use std::sync::Arc;
@@ -63,6 +64,8 @@ pub fn Pagination(
     on_change: impl Fn(usize) + Clone + Send + Sync + 'static,
 ) -> impl IntoView {
     let on_change = Arc::new(on_change);
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
 
     let on_click_prev = {
         let on_change = on_change.clone();
@@ -89,7 +92,7 @@ pub fn Pagination(
                 disabled=move || !state.get().has_prev()
                 on:click=on_click_prev
             >
-                "← Previous"
+                {move || format!("← {}", i18n_stored.get_value().t("pagination-previous"))}
             </button>
 
             <div class="pagination-pages">
@@ -118,16 +121,22 @@ pub fn Pagination(
                 disabled=move || !state.get().has_next()
                 on:click=on_click_next
             >
-                "Next →"
+                {move || format!("{} →", i18n_stored.get_value().t("pagination-next"))}
             </button>
 
             <span class="pagination-info">
-                {move || format!(
-                    "Page {} of {} ({} items)",
-                    state.get().current_page,
-                    state.get().total_pages,
-                    state.get().total_items
-                )}
+                {move || {
+                    let i18n = i18n_stored.get_value();
+                    format!(
+                        "{} {} {} {} ({} {})",
+                        i18n.t("pagination-page"),
+                        state.get().current_page,
+                        i18n.t("pagination-of"),
+                        state.get().total_pages,
+                        state.get().total_items,
+                        i18n.t("pagination-items")
+                    )
+                }}
             </span>
         </div>
     }
@@ -237,10 +246,12 @@ pub fn LoadMoreTrigger(
             node_ref=trigger_ref
         >
             {move || if is_loading.get() {
+                let i18n = use_context::<I18nContext>().expect("i18n context not found");
+                let i18n_stored = StoredValue::new(i18n);
                 view! {
                     <div class="loading-indicator">
                         <span class="spinner-small"></span>
-                        <span>"Loading more..."</span>
+                        <span>{move || i18n_stored.get_value().t("loading-more")}</span>
                     </div>
                 }.into_any()
             } else {
@@ -257,9 +268,12 @@ pub fn PageSizeSelector(
     options: Vec<usize>,
     on_change: impl Fn(usize) + 'static,
 ) -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     view! {
         <div class="page-size-selector">
-            <label>"Show:"</label>
+            <label>{move || i18n_stored.get_value().t("page-size-show")}</label>
             <select
                 prop:value=move || current_size.get()
                 on:change=move |e| {
@@ -270,8 +284,11 @@ pub fn PageSizeSelector(
                     }
                 }
             >
-                {options.into_iter().map(|size| view! {
-                    <option value=size>{format!("{} per page", size)}</option>
+                {options.into_iter().map(|size| {
+                    let i18n = i18n_stored.get_value();
+                    view! {
+                        <option value=size>{format!("{} {}", size, i18n.t("page-size-per-page"))}</option>
+                    }
                 }).collect::<Vec<_>>()}
             </select>
         </div>

@@ -1,5 +1,6 @@
 //! Gateway Configuration Wizard Components
 
+use crate::i18n::I18nContext;
 use crate::state::wizard::*;
 use crate::utils::{event_target_checked, event_target_value};
 use leptos::prelude::*;
@@ -11,17 +12,20 @@ pub fn WizardStepper(
     current_step: RwSignal<usize>,
     #[prop(default = 10)] total_steps: usize,
 ) -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     let steps = vec![
-        (1, "Welcome"),
-        (2, "Server"),
-        (3, "Database"),
-        (4, "Security"),
-        (5, "LLM Models"),
-        (6, "Channels"),
-        (7, "Blockchain"),
-        (8, "Logging"),
-        (9, "Review"),
-        (10, "Deploy"),
+        (1, i18n_stored.get_value().t("wizard-step-welcome")),
+        (2, i18n_stored.get_value().t("wizard-step-server")),
+        (3, i18n_stored.get_value().t("wizard-step-database")),
+        (4, i18n_stored.get_value().t("wizard-step-security")),
+        (5, i18n_stored.get_value().t("wizard-step-llm")),
+        (6, i18n_stored.get_value().t("wizard-step-channels")),
+        (7, i18n_stored.get_value().t("wizard-step-blockchain")),
+        (8, i18n_stored.get_value().t("wizard-step-logging")),
+        (9, i18n_stored.get_value().t("wizard-step-review")),
+        (10, i18n_stored.get_value().t("wizard-step-deploy")),
     ];
 
     view! {
@@ -67,6 +71,9 @@ pub fn WizardNavigation(
     #[prop(into)] on_finish: Callback<()>,
     is_submitting: RwSignal<bool>,
 ) -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     view! {
         <div class="wizard-navigation">
             <button
@@ -74,11 +81,11 @@ pub fn WizardNavigation(
                 disabled=move || current_step.get() == 1
                 on:click=move |_| on_back.run(())
             >
-                "← Back"
+                {move || i18n_stored.get_value().t("wizard-back")}
             </button>
 
             <div class="step-indicator">
-                {move || format!("Step {} of {}", current_step.get(), total_steps)}
+                {move || i18n_stored.get_value().t("wizard-step-indicator").replace("{current}", &current_step.get().to_string()).replace("{total}", &total_steps.to_string())}
             </div>
 
             {move || if current_step.get() == total_steps {
@@ -89,9 +96,9 @@ pub fn WizardNavigation(
                         on:click=move |_| on_finish.run(())
                     >
                         {move || if is_submitting.get() {
-                            "Deploying...".into_any()
+                            i18n_stored.get_value().t("wizard-deploying").into_any()
                         } else {
-                            "Save & Export ▼".into_any()
+                            i18n_stored.get_value().t("wizard-save-export").into_any()
                         }}
                     </button>
                 }.into_any()
@@ -102,7 +109,7 @@ pub fn WizardNavigation(
                         disabled=move || !can_proceed.get()
                         on:click=move |_| on_next.run(())
                     >
-                        "Next →"
+                        {move || i18n_stored.get_value().t("wizard-next")}
                     </button>
                 }.into_any()
             }}
@@ -117,8 +124,11 @@ pub fn SecretInput(
     #[prop(optional)] placeholder: Option<String>,
     #[prop(optional, into)] on_generate: Option<Callback<()>>,
 ) -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     let show_password = RwSignal::new(false);
-    let placeholder = placeholder.unwrap_or_else(|| "Enter secret...".to_string());
+    let placeholder = placeholder.unwrap_or_else(|| i18n_stored.get_value().t("secret-input-placeholder"));
 
     view! {
         <div class="secret-input-wrapper">
@@ -132,7 +142,7 @@ pub fn SecretInput(
                 type="button"
                 class="btn btn-icon secret-toggle"
                 on:click=move |_| show_password.update(|v| *v = !*v)
-                title=move || if show_password.get() { "Hide" } else { "Show" }
+                title=move || if show_password.get() { i18n_stored.get_value().t("secret-input-hide") } else { i18n_stored.get_value().t("secret-input-show") }
             >
                 {move || if show_password.get() { "🙈" } else { "👁" }}
             </button>
@@ -142,7 +152,7 @@ pub fn SecretInput(
                         type="button"
                         class="btn btn-icon secret-generate"
                         on:click=move |_| gen.run(())
-                        title="Generate"
+                        title={i18n_stored.get_value().t("secret-input-generate")}
                     >
                         "🎲"
                     </button>
@@ -158,6 +168,9 @@ pub fn ProviderCard(
     #[prop(into)] provider: ProviderDraft,
     on_remove: impl Fn() + 'static,
 ) -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     view! {
         <div class="provider-card-config">
             <div class="provider-card-header">
@@ -167,25 +180,25 @@ pub fn ProviderCard(
                 </button>
             </div>
             <div class="form-group">
-                <label>"API Key"</label>
+                <label>{move || i18n_stored.get_value().t("provider-api-key")}</label>
                 <input type="password" value=provider.api_key readonly />
             </div>
             <div class="form-group">
-                <label>"Model"</label>
+                <label>{move || i18n_stored.get_value().t("provider-model")}</label>
                 <input type="text" value=provider.model readonly />
             </div>
             <div class="form-group">
-                <label>"Base URL"</label>
+                <label>{move || i18n_stored.get_value().t("provider-base-url")}</label>
                 <input type="text" value=provider.base_url readonly />
             </div>
             <div class="form-row">
                 <div class="form-group">
-                    <label>"Temperature"</label>
+                    <label>{move || i18n_stored.get_value().t("provider-temperature")}</label>
                     <input type="text" value=format!("{:.1}", provider.temperature) readonly />
                 </div>
                 <div class="form-group">
-                    <label>"Context Window"</label>
-                    <input type="text" value=provider.context_window.map(|c| c.to_string()).unwrap_or_else(|| "Default".to_string()) readonly />
+                    <label>{move || i18n_stored.get_value().t("provider-context-window")}</label>
+                    <input type="text" value=provider.context_window.map(|c| c.to_string()).unwrap_or_else(|| i18n_stored.get_value().t("provider-default")) readonly />
                 </div>
             </div>
         </div>
@@ -236,6 +249,9 @@ pub fn ConfigPreview(
 pub fn ChannelPlatformForm(
     platform: RwSignal<PlatformDraft>,
 ) -> impl IntoView {
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
+
     let name = platform.get().name.clone();
     let enabled = RwSignal::new(platform.get().enabled);
 
@@ -255,13 +271,13 @@ pub fn ChannelPlatformForm(
                     <span class="platform-name">{name.clone()}</span>
                 </label>
                 <span class=move || format!("status-badge {}", if enabled.get() { "enabled" } else { "disabled" })>
-                    {move || if enabled.get() { "Enabled" } else { "Disabled" }}
+                    {move || if enabled.get() { i18n_stored.get_value().t("platform-enabled") } else { i18n_stored.get_value().t("platform-disabled") }}
                 </span>
             </div>
             {move || if enabled.get() {
                 view! {
                     <div class="platform-settings">
-                        <p class="form-help">{format!("Configure {} settings in beebotos.toml", name)}</p>
+                        <p class="form-help">{i18n_stored.get_value().t("platform-config-hint").replace("{}", &name)}</p>
                     </div>
                 }.into_any()
             } else {
@@ -270,5 +286,3 @@ pub fn ChannelPlatformForm(
         </div>
     }
 }
-
-

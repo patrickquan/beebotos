@@ -11,6 +11,7 @@ use wasm_bindgen::JsCast;
 
 use crate::api::{create_client, create_webchat_service};
 use crate::components::webchat::{MessageInput, MessageList, SessionList, SidePanel, UsagePanelComponent};
+use crate::i18n::I18nContext;
 use crate::state::{use_auth_state, use_chat_ui_state, use_webchat_state};
 use crate::utils::get_user_id;
 use crate::webchat::{ChatMessage, MessageRole};
@@ -31,13 +32,17 @@ pub fn WebchatPage() -> impl IntoView {
     let chat_state = use_webchat_state();
     let ui_state = use_chat_ui_state();
     let auth_state = use_auth_state();
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
 
     // 组件挂载：从后端加载会话列表
     let chat_state_for_load = chat_state.clone();
     let auth_state_for_load = auth_state.clone();
+    let i18n_err = i18n_stored.clone();
     Effect::new(move |_| {
         let chat_state = chat_state_for_load.clone();
         let auth_state = auth_state_for_load.clone();
+        let i18n = i18n_err.clone();
         wasm_bindgen_futures::spawn_local(async move {
             let client = create_client();
             client.set_auth_token(auth_state.get_token());
@@ -64,7 +69,7 @@ pub fn WebchatPage() -> impl IntoView {
                                 }
                                 Err(e) => {
                                     let _ = web_sys::console::error_1(&format!("[webchat] get_messages failed: {}", e).into());
-                                    chat_state.set_error(Some(format!("加载消息失败: {}", e)));
+                                    chat_state.set_error(Some(format!("{}: {}", i18n.get_value().t("webchat-load-messages-failed"), e)));
                                 }
                             }
                         }
@@ -80,13 +85,13 @@ pub fn WebchatPage() -> impl IntoView {
                             }
                             Err(e) => {
                                 let _ = web_sys::console::error_1(&format!("[webchat] get_messages failed: {}", e).into());
-                                chat_state.set_error(Some(format!("加载消息失败: {}", e)));
+                                chat_state.set_error(Some(format!("{}: {}", i18n.get_value().t("webchat-load-messages-failed"), e)));
                             }
                         }
                     } else {
                         // 没有会话时自动创建一个
                         let _ = web_sys::console::log_1(&"[webchat] creating session".into());
-                        match service.create_session("New Chat").await {
+                        match service.create_session(&i18n.get_value().t("webchat-new-session")).await {
                             Ok(session) => {
                                 let id = session.id.clone();
                                 chat_state.sessions.update(|s| s.push(session));
@@ -94,13 +99,13 @@ pub fn WebchatPage() -> impl IntoView {
                                 store_session_id(&id);
                             }
                             Err(e) => {
-                                chat_state.set_error(Some(format!("创建会话失败: {}", e)));
+                                chat_state.set_error(Some(format!("{}: {}", i18n.get_value().t("webchat-create-session-failed"), e)));
                             }
                         }
                     }
                 }
                 Err(e) => {
-                    chat_state.set_error(Some(format!("加载会话失败: {}", e)));
+                    chat_state.set_error(Some(format!("{}: {}", i18n.get_value().t("webchat-load-sessions-failed"), e)));
                 }
             }
         });
@@ -109,6 +114,7 @@ pub fn WebchatPage() -> impl IntoView {
     // WebSocket 连接：订阅 webchat 频道接收 Agent 回复
     let chat_state_for_effect = chat_state.clone();
     let auth_state_for_ws = auth_state.clone();
+    let i18n_ws = i18n_stored.clone();
     Effect::new(move |_| {
         let window = web_sys::window()?;
         let location = window.location();
@@ -162,8 +168,9 @@ pub fn WebchatPage() -> impl IntoView {
         onopen.forget();
 
         let chat_state_err = chat_state_for_effect.clone();
+        let i18n_err = i18n_ws.clone();
         let onerror = Closure::wrap(Box::new(move |_e: web_sys::Event| {
-            chat_state_err.set_error(Some("WebSocket connection error".to_string()));
+            chat_state_err.set_error(Some(i18n_err.get_value().t("webchat-ws-error")));
         }) as Box<dyn FnMut(_)>);
         ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
         onerror.forget();
@@ -180,6 +187,7 @@ pub fn WebchatPage() -> impl IntoView {
     // 发送消息处理
     let chat_state_for_send = chat_state.clone();
     let auth_state_for_send = auth_state.clone();
+    let i18n_send = i18n_stored.clone();
     let handle_send = move |content: String| {
         if chat_state_for_send.is_sending.get() {
             return;
@@ -207,6 +215,7 @@ pub fn WebchatPage() -> impl IntoView {
         // 异步发送到后端
         let chat_state_send = chat_state_for_send.clone();
         let auth_state_send = auth_state_for_send.clone();
+        let i18n = i18n_send.clone();
         wasm_bindgen_futures::spawn_local(async move {
             let client = create_client();
             client.set_auth_token(auth_state_send.get_token());
@@ -225,7 +234,7 @@ pub fn WebchatPage() -> impl IntoView {
                     });
                 }
                 Err(e) => {
-                    chat_state_send.set_error(Some(format!("Failed to send: {}", e)));
+                    chat_state_send.set_error(Some(format!("{}: {}", i18n.get_value().t("webchat-send-failed"), e)));
                     chat_state_send.is_sending.set(false);
                 }
             }
@@ -237,11 +246,14 @@ pub fn WebchatPage() -> impl IntoView {
     // 切换会话
     let chat_state_select = chat_state.clone();
     let auth_state_select = auth_state.clone();
+    let i18n_select = i18n_stored.clone();
     let on_select_session: std::sync::Arc<dyn Fn(String) + Send + Sync> = std::sync::Arc::new({
         let chat_state = chat_state_select.clone();
+        let i18n = i18n_select.clone();
         move |id: String| {
             let chat_state = chat_state.clone();
             let auth_state = auth_state_select.clone();
+            let i18n = i18n.clone();
             store_session_id(&id);
             chat_state.current_session_id.set(Some(id.clone()));
 
@@ -265,7 +277,7 @@ pub fn WebchatPage() -> impl IntoView {
                         Err(e) => {
                             let _ = web_sys::console::error_1(
                                 &format!("[webchat] select_session get_messages failed: {}", e).into());
-                            chat_state.set_error(Some(format!("加载消息失败: {}", e)));
+                            chat_state.set_error(Some(format!("{}: {}", i18n.get_value().t("webchat-load-messages-failed"), e)));
                         }
                     }
                 });
@@ -276,16 +288,19 @@ pub fn WebchatPage() -> impl IntoView {
     // 新建会话
     let chat_state_new = chat_state.clone();
     let auth_state_new = auth_state.clone();
+    let i18n_new = i18n_stored.clone();
     let on_new_session: std::sync::Arc<dyn Fn() + Send + Sync> = std::sync::Arc::new({
         let chat_state = chat_state_new.clone();
+        let i18n = i18n_new.clone();
         move || {
             let chat_state = chat_state.clone();
             let auth_state = auth_state_new.clone();
+            let i18n = i18n.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let client = create_client();
                 client.set_auth_token(auth_state.get_token());
                 let service = create_webchat_service(client);
-                match service.create_session("New Chat").await {
+                match service.create_session(&i18n.get_value().t("webchat-new-session")).await {
                     Ok(session) => {
                         let id = session.id.clone();
                         chat_state.sessions.update(|s| s.push(session));
@@ -294,7 +309,7 @@ pub fn WebchatPage() -> impl IntoView {
                         store_session_id(&id);
                     }
                     Err(e) => {
-                        chat_state.set_error(Some(format!("创建会话失败: {}", e)));
+                        chat_state.set_error(Some(format!("{}: {}", i18n.get_value().t("webchat-create-session-failed"), e)));
                     }
                 }
             });
@@ -304,6 +319,7 @@ pub fn WebchatPage() -> impl IntoView {
     // 当前会话标题
     let current_title = Signal::derive({
         let chat_state = chat_state.clone();
+        let i18n = i18n_stored.clone();
         move || {
             let id = chat_state.current_session_id.get();
             chat_state
@@ -312,7 +328,7 @@ pub fn WebchatPage() -> impl IntoView {
                 .into_iter()
                 .find(|s| Some(s.id.clone()) == id)
                 .map(|s| s.title)
-                .unwrap_or_else(|| "Chat Session".to_string())
+                .unwrap_or_else(|| i18n.get_value().t("webchat-default-title"))
         }
     });
 
@@ -324,13 +340,13 @@ pub fn WebchatPage() -> impl IntoView {
     let _ui_state_header = ui_state.clone();
 
     view! {
-        <Title text="Chat - BeeBotOS" />
+        <Title text={move || i18n_stored.get_value().t("webchat-page-title")} />
         <div class="webchat-page">
             <div class="webchat-container">
                 {move || {
                     if ui_state_sessions.show_sessions_panel.get() {
                         view! {
-                            <SessionsSidebar on_select=on_select_session.clone() on_new=on_new_session.clone() />
+                            <SessionsSidebar on_select=on_select_session.clone() on_new=on_new_session.clone() i18n=i18n_stored.get_value()/>
                         }.into_any()
                     } else {
                         view! { <div class="sidebar-collapsed" /> }.into_any()
@@ -338,7 +354,7 @@ pub fn WebchatPage() -> impl IntoView {
                 }}
 
                 <main class="chat-main">
-                    <ChatHeader title=current_title />
+                    <ChatHeader title=current_title _i18n=i18n_stored.get_value()/>
                     {move || view! {
                         <MessageList
                             messages=chat_state.current_messages.into()
@@ -347,7 +363,7 @@ pub fn WebchatPage() -> impl IntoView {
                         />
                     }}
                     <MessageInput
-                        placeholder="Type a message... (use /btw for side question)".to_string()
+                        placeholder=i18n_stored.get_value().t("webchat-input-placeholder")
                         disabled=chat_state.is_sending.get()
                         on_submit=on_submit
                     />
@@ -406,9 +422,11 @@ pub fn WebchatPage() -> impl IntoView {
 fn SessionsSidebar(
     #[prop(into)] on_select: std::sync::Arc<dyn Fn(String) + Send + Sync>,
     #[prop(into)] on_new: std::sync::Arc<dyn Fn() + Send + Sync>,
+    i18n: I18nContext,
 ) -> impl IntoView {
     let ui_state = use_chat_ui_state();
     let chat_state = use_webchat_state();
+    let i18n_stored = StoredValue::new(i18n);
 
     let on_new_chat = {
         let on_new = on_new.clone();
@@ -420,7 +438,7 @@ fn SessionsSidebar(
     view! {
         <aside class="sessions-sidebar">
             <div class="sidebar-header">
-                <h3>"Sessions"</h3>
+                <h3>{move || i18n_stored.get_value().t("webchat-sessions-title")}</h3>
                 <button class="btn btn-icon" on:click=move |_| ui_state.toggle_sessions_panel()>
                     "◀"
                 </button>
@@ -428,14 +446,14 @@ fn SessionsSidebar(
 
             <div class="sidebar-actions">
                 <button class="btn btn-primary btn-block" on:click=on_new_chat>
-                    "+ New Chat"
+                    {move || i18n_stored.get_value().t("webchat-new-chat")}
                 </button>
             </div>
 
             <div class="search-box">
                 <input
                     type="text"
-                    placeholder="Search sessions..."
+                    placeholder={move || i18n_stored.get_value().t("webchat-search-sessions")}
                 />
             </div>
 
@@ -451,7 +469,7 @@ fn SessionsSidebar(
 
 /// 聊天头部
 #[component]
-fn ChatHeader(title: Signal<String>) -> impl IntoView {
+fn ChatHeader(title: Signal<String>, _i18n: I18nContext) -> impl IntoView {
     let ui_state = use_chat_ui_state();
 
     view! {

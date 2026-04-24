@@ -5,7 +5,7 @@ use leptos::prelude::*;
 /// Display a label-value pair in an info grid
 #[component]
 pub fn InfoItem(
-    #[prop(into)] label: String,
+    label: String,
     #[prop(into)] value: String,
     #[prop(default = "info-item")] class: &'static str,
 ) -> impl IntoView {
