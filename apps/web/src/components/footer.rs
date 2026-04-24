@@ -22,8 +22,8 @@ pub fn Footer() -> impl IntoView {
                     </p>
                 </div>
                 <div class="footer-badges">
-                    <span class="badge badge-primary">"OpenClaw v2026.3.13"</span>
-                    <span class="badge badge-secondary">"Web4.0 Ready"</span>
+                    <span class="badge badge-primary">{move || i18n_stored.get_value().t("footer-openclaw")}</span>
+                    <span class="badge badge-secondary">{move || i18n_stored.get_value().t("footer-web4-ready")}</span>
                 </div>
             </div>
         </footer>

@@ -9,6 +9,7 @@ use leptos_meta::*;
 
 use crate::api::{InstallSkillRequest, SkillCategory, SkillInfo};
 use crate::components::{Modal, StarRating};
+use crate::i18n::I18nContext;
 use crate::state::use_app_state;
 
 #[component]
@@ -19,6 +20,8 @@ pub fn SkillsPage() -> impl IntoView {
     let selected_hub = RwSignal::new(None::<String>);
     let selected_category = RwSignal::new(None::<SkillCategory>);
     let show_details = RwSignal::new(None::<SkillInfo>);
+    let i18n = use_context::<I18nContext>().expect("i18n context not found");
+    let i18n_stored = StoredValue::new(i18n);
 
     // Fetch skills - use LocalResource for CSR
     let skills = LocalResource::new({
@@ -58,12 +61,12 @@ pub fn SkillsPage() -> impl IntoView {
     };
 
     view! {
-        <Title text="Skills - BeeBotOS" />
+        <Title text={move || i18n_stored.get_value().t("skills-page-title")} />
         <div class="page skills-page">
             <div class="page-header">
                 <div>
-                    <h1>"Skill Marketplace"</h1>
-                    <p class="page-description">"Browse and install community-built skills to extend your agents"</p>
+                    <h1>{move || i18n_stored.get_value().t("skills-title")}</h1>
+                    <p class="page-description">{move || i18n_stored.get_value().t("skills-subtitle")}</p>
                 </div>
             </div>
 
@@ -71,18 +74,18 @@ pub fn SkillsPage() -> impl IntoView {
             <div class="info-banner">
                 <span class="info-icon">"ℹ️"</span>
                 <span>
-                    "This marketplace shows "
-                    <strong>"WASM Runtime Skills"</strong>
-                    " (skill.wasm + skill.yaml). Prompt templates in the skills/ directory are separate LLM role definitions and not shown here."
+                    {move || i18n_stored.get_value().t("skills-info-banner-prefix")}
+                    <strong>{move || i18n_stored.get_value().t("skills-info-banner-wasm")}</strong>
+                    {move || i18n_stored.get_value().t("skills-info-banner-suffix")}
                 </span>
             </div>
 
             <section class="skills-controls">
                 // === Hub Selector (P2) ===
                 <div class="hub-selector">
-                    <span class="hub-label">"Source:"</span>
+                    <span class="hub-label">{move || i18n_stored.get_value().t("skills-source")}</span>
                     <HubButton
-                        label="Local"
+                        label=i18n_stored.get_value().t("skills-source-local")
                         is_active={
                             let selected = selected_hub.clone();
                             move || selected.get().is_none()
@@ -94,7 +97,7 @@ pub fn SkillsPage() -> impl IntoView {
                         }
                     />
                     <HubButton
-                        label="ClawHub"
+                        label=i18n_stored.get_value().t("skills-source-clawhub")
                         is_active={
                             let selected = selected_hub.clone();
                             move || selected.get().as_deref() == Some("clawhub")
@@ -106,7 +109,7 @@ pub fn SkillsPage() -> impl IntoView {
                         }
                     />
                     <HubButton
-                        label="BeeHub"
+                        label=i18n_stored.get_value().t("skills-source-beehub")
                         is_active={
                             let selected = selected_hub.clone();
                             move || selected.get().as_deref() == Some("beehub")
@@ -123,7 +126,7 @@ pub fn SkillsPage() -> impl IntoView {
                 <div class="search-bar">
                     <input
                         type="text"
-                        placeholder="Search skills..."
+                        placeholder={move || i18n_stored.get_value().t("skills-search-placeholder")}
                         prop:value=search_input
                         on:input=move |e| search_input.set(event_target_value(&e))
                         on:keyup=move |e| {
@@ -133,13 +136,13 @@ pub fn SkillsPage() -> impl IntoView {
                         }
                     />
                     <button class="search-btn" on:click=move |_| perform_search()>
-                        "🔍 Search"
+                        {move || i18n_stored.get_value().t("skills-search-btn")}
                     </button>
                 </div>
 
                 <div class="category-filters">
                     <CategoryFilter
-                        label="All"
+                        label=i18n_stored.get_value().t("skills-cat-all")
                         is_active={
                             let selected = selected_category;
                             move || selected.get().is_none()
@@ -150,7 +153,7 @@ pub fn SkillsPage() -> impl IntoView {
                         }
                     />
                     <CategoryFilter
-                        label="Trading"
+                        label=i18n_stored.get_value().t("skills-cat-trading")
                         is_active={
                             let selected = selected_category;
                             move || selected.get() == Some(SkillCategory::Trading)
@@ -161,7 +164,7 @@ pub fn SkillsPage() -> impl IntoView {
                         }
                     />
                     <CategoryFilter
-                        label="Data"
+                        label=i18n_stored.get_value().t("skills-cat-data")
                         is_active={
                             let selected = selected_category;
                             move || selected.get() == Some(SkillCategory::Data)
@@ -172,7 +175,7 @@ pub fn SkillsPage() -> impl IntoView {
                         }
                     />
                     <CategoryFilter
-                        label="Social"
+                        label=i18n_stored.get_value().t("skills-cat-social")
                         is_active={
                             let selected = selected_category;
                             move || selected.get() == Some(SkillCategory::Social)
@@ -183,7 +186,7 @@ pub fn SkillsPage() -> impl IntoView {
                         }
                     />
                     <CategoryFilter
-                        label="Automation"
+                        label=i18n_stored.get_value().t("skills-cat-automation")
                         is_active={
                             let selected = selected_category;
                             move || selected.get() == Some(SkillCategory::Automation)
@@ -194,7 +197,7 @@ pub fn SkillsPage() -> impl IntoView {
                         }
                     />
                     <CategoryFilter
-                        label="Analysis"
+                        label=i18n_stored.get_value().t("skills-cat-analysis")
                         is_active={
                             let selected = selected_category;
                             move || selected.get() == Some(SkillCategory::Analysis)
@@ -226,14 +229,14 @@ pub fn SkillsPage() -> impl IntoView {
                                     .collect();
 
                                 if filtered.is_empty() {
-                                    view! { <SkillsEmpty hub=selected_hub.get() search=active_search.get()/> }.into_any()
+                                    view! { <SkillsEmpty hub=selected_hub.get() search=active_search.get() i18n=i18n_stored.get_value()/> }.into_any()
                                 } else {
                                     view! {
-                                        <SkillsGrid skills=filtered reload=reload_skills.clone() selected_hub=selected_hub.clone() on_show_details=move |s| show_details.set(Some(s))/>
+                                        <SkillsGrid skills=filtered reload=reload_skills.clone() selected_hub=selected_hub.clone() on_show_details=move |s| show_details.set(Some(s)) i18n=i18n_stored.get_value()/>
                                     }.into_any()
                                 }
                             }
-                            Err(e) => view! { <SkillsError message=e.to_string()/> }.into_any(),
+                            Err(e) => view! { <SkillsError message=e.to_string() i18n=i18n_stored.get_value()/> }.into_any(),
                         }
                     })
                 }}
@@ -242,7 +245,7 @@ pub fn SkillsPage() -> impl IntoView {
             // === Skill Detail Modal (P2) ===
             {move || show_details.get().map(|skill| {
                 view! {
-                    <SkillDetailModal skill=skill on_close=move || show_details.set(None)/>
+                    <SkillDetailModal skill=skill on_close=move || show_details.set(None) i18n=i18n_stored.get_value()/>
                 }
             })}
         </div>
@@ -251,7 +254,7 @@ pub fn SkillsPage() -> impl IntoView {
 
 #[component]
 fn HubButton(
-    #[prop(into)] label: String,
+    label: String,
     is_active: impl Fn() -> bool + Clone + Send + Sync + 'static,
     on_click: impl Fn() + Clone + Send + Sync + 'static,
 ) -> impl IntoView {
@@ -267,7 +270,7 @@ fn HubButton(
 
 #[component]
 fn CategoryFilter(
-    #[prop(into)] label: String,
+    label: String,
     is_active: impl Fn() -> bool + Clone + Send + Sync + 'static,
     on_click: impl Fn() + Clone + Send + Sync + 'static,
 ) -> impl IntoView {
@@ -287,12 +290,13 @@ fn SkillsGrid(
     reload: impl Fn() + Clone + Send + Sync + 'static,
     selected_hub: RwSignal<Option<String>>,
     on_show_details: impl Fn(SkillInfo) + Clone + Send + Sync + 'static,
+    i18n: I18nContext,
 ) -> impl IntoView {
     view! {
         <div class="skills-grid">
             {skills.into_iter().map(|skill| {
                 view! {
-                    <SkillCard skill=skill reload=reload.clone() selected_hub=selected_hub.clone() on_show_details=on_show_details.clone()/>
+                    <SkillCard skill=skill reload=reload.clone() selected_hub=selected_hub.clone() on_show_details=on_show_details.clone() i18n=i18n.clone()/>
                 }
             }).collect::<Vec<_>>()}
         </div>
@@ -305,10 +309,12 @@ fn SkillCard(
     reload: impl Fn() + Clone + Send + Sync + 'static,
     selected_hub: RwSignal<Option<String>>,
     on_show_details: impl Fn(SkillInfo) + Clone + Send + Sync + 'static,
+    i18n: I18nContext,
 ) -> impl IntoView {
     let app_state = use_app_state();
     let is_installing = RwSignal::new(false);
     let is_uninstalling = RwSignal::new(false);
+    let i18n_stored = StoredValue::new(i18n);
 
     let skill_sig = RwSignal::new(skill);
     let is_installed = move || skill_sig.get().installed;
@@ -382,7 +388,7 @@ fn SkillCard(
                 </div>
                 {move || if is_installed() {
                     view! {
-                        <span class="installed-badge">"✓ Installed"</span>
+                        <span class="installed-badge">{move || i18n_stored.get_value().t("skills-installed-badge")}</span>
                     }.into_any()
                 } else {
                     view! { <></> }.into_any()
@@ -401,7 +407,7 @@ fn SkillCard(
                             move |_| on_show_details(skill.clone())
                         }
                     >
-                        "Details"
+                        {move || i18n_stored.get_value().t("skills-btn-details")}
                     </button>
                     {move || if is_installed() {
                         let app_state = app_state.clone();
@@ -423,16 +429,16 @@ fn SkillCard(
                                             Ok(()) => {
                                                 app_state.notify(
                                                     crate::state::notification::NotificationType::Success,
-                                                    "Skill Uninstalled",
-                                                    format!("{} removed successfully", skill_name),
+                                                    i18n_stored.get_value().t("skills-uninstall-success-title"),
+                                                    format!("{} {}", skill_name, i18n_stored.get_value().t("skills-uninstall-success-msg")),
                                                 );
                                                 reload();
                                             }
                                             Err(e) => {
                                                 app_state.notify(
                                                     crate::state::notification::NotificationType::Error,
-                                                    "Uninstall Failed",
-                                                    format!("Failed to uninstall {}: {}", skill_name, e),
+                                                    i18n_stored.get_value().t("skills-uninstall-fail-title"),
+                                                    format!("{} {}: {}", i18n_stored.get_value().t("skills-uninstall-fail-msg"), skill_name, e),
                                                 );
                                             }
                                         }
@@ -441,9 +447,9 @@ fn SkillCard(
                                 }
                             >
                                 {move || if is_uninstalling.get() {
-                                    "Removing..."
+                                    i18n_stored.get_value().t("skills-removing")
                                 } else {
-                                    "Uninstall"
+                                    i18n_stored.get_value().t("skills-btn-uninstall")
                                 }}
                             </button>
                         }.into_any()
@@ -466,7 +472,7 @@ fn SkillCard(
                                         href=hub_url
                                         target="_blank"
                                     >
-                                        "View on Hub"
+                                        {move || i18n_stored.get_value().t("skills-btn-view-hub")}
                                     </a>
                                     <button
                                         class="btn btn-success btn-sm"
@@ -489,16 +495,16 @@ fn SkillCard(
                                                     Ok(resp) => {
                                                         app_state.notify(
                                                             crate::state::notification::NotificationType::Success,
-                                                            "Skill Installed",
-                                                            format!("{} installed successfully", resp.name),
+                                                            i18n_stored.get_value().t("skills-install-success-title"),
+                                                            format!("{} {}", resp.name, i18n_stored.get_value().t("skills-install-success-msg")),
                                                         );
                                                         reload();
                                                     }
                                                     Err(e) => {
                                                         app_state.notify(
                                                             crate::state::notification::NotificationType::Error,
-                                                            "Install Failed",
-                                                            format!("Failed to install {}: {}", skill_name, e),
+                                                            i18n_stored.get_value().t("skills-install-fail-title"),
+                                                            format!("{} {}: {}", i18n_stored.get_value().t("skills-install-fail-msg"), skill_name, e),
                                                         );
                                                     }
                                                 }
@@ -507,9 +513,9 @@ fn SkillCard(
                                         }
                                     >
                                         {move || if is_installing.get() {
-                                            "Installing..."
+                                            i18n_stored.get_value().t("skills-installing")
                                         } else {
-                                            "Install"
+                                            i18n_stored.get_value().t("skills-btn-install")
                                         }}
                                     </button>
                                 </>
@@ -540,16 +546,16 @@ fn SkillCard(
                                                 Ok(resp) => {
                                                     app_state.notify(
                                                         crate::state::notification::NotificationType::Success,
-                                                        "Skill Installed",
-                                                        format!("{} installed successfully", resp.name),
+                                                        i18n_stored.get_value().t("skills-install-success-title"),
+                                                        format!("{} {}", resp.name, i18n_stored.get_value().t("skills-install-success-msg")),
                                                     );
                                                     reload();
                                                 }
                                                 Err(e) => {
                                                     app_state.notify(
                                                         crate::state::notification::NotificationType::Error,
-                                                        "Install Failed",
-                                                        format!("Failed to install {}: {}", skill_name, e),
+                                                        i18n_stored.get_value().t("skills-install-fail-title"),
+                                                        format!("{} {}: {}", i18n_stored.get_value().t("skills-install-fail-msg"), skill_name, e),
                                                     );
                                                 }
                                             }
@@ -558,9 +564,9 @@ fn SkillCard(
                                     }
                                 >
                                     {move || if is_installing.get() {
-                                        "Installing..."
+                                        i18n_stored.get_value().t("skills-installing")
                                     } else {
-                                        "Install"
+                                        i18n_stored.get_value().t("skills-btn-install")
                                     }}
                                 </button>
                             }.into_any()
@@ -577,39 +583,41 @@ fn SkillCard(
 fn SkillDetailModal(
     #[prop(into)] skill: SkillInfo,
     on_close: impl Fn() + Clone + Send + Sync + 'static,
+    i18n: I18nContext,
 ) -> impl IntoView {
+    let i18n_stored = StoredValue::new(i18n);
     view! {
         <Modal title=skill.name.clone() on_close=move || on_close()>
             <div class="modal-body">
                     <div class="detail-row">
-                        <span class="detail-label">"Version:"</span>
+                        <span class="detail-label">{move || i18n_stored.get_value().t("skills-detail-version")}</span>
                         <span class="detail-value">{format!("v{}", skill.version)}</span>
                     </div>
                     <div class="detail-row">
-                        <span class="detail-label">"Author:"</span>
+                        <span class="detail-label">{move || i18n_stored.get_value().t("skills-detail-author")}</span>
                         <span class="detail-value">{skill.author.clone()}</span>
                     </div>
                     <div class="detail-row">
-                        <span class="detail-label">"License:"</span>
+                        <span class="detail-label">{move || i18n_stored.get_value().t("skills-detail-license")}</span>
                         <span class="detail-value">{skill.license.clone()}</span>
                     </div>
                     <div class="detail-row">
-                        <span class="detail-label">"Downloads:"</span>
+                        <span class="detail-label">{move || i18n_stored.get_value().t("skills-detail-downloads")}</span>
                         <span class="detail-value">{skill.downloads.to_string()}</span>
                     </div>
                     <div class="detail-row">
-                        <span class="detail-label">"Rating:"</span>
+                        <span class="detail-label">{move || i18n_stored.get_value().t("skills-detail-rating")}</span>
                         <span class="detail-value"><StarRating rating=skill.rating />{format!(" {}  ", skill.rating)}</span>
                     </div>
                     <div class="detail-section">
-                        <span class="detail-label">"Description:"</span>
+                        <span class="detail-label">{move || i18n_stored.get_value().t("skills-detail-description")}</span>
                         <p class="detail-description">{skill.description.clone()}</p>
                     </div>
                     <div class="detail-section">
-                        <span class="detail-label">"Capabilities:"</span>
+                        <span class="detail-label">{move || i18n_stored.get_value().t("skills-detail-capabilities")}</span>
                         <div class="detail-tags">
                             {if skill.capabilities.is_empty() {
-                                view! { <span class="tag empty">"None listed"</span> }.into_any()
+                                view! { <span class="tag empty">{move || i18n_stored.get_value().t("skills-detail-none")}</span> }.into_any()
                             } else {
                                 skill.capabilities.iter().map(|c| {
                                     view! { <span class="tag capability">{c.clone()}</span> }
@@ -618,10 +626,10 @@ fn SkillDetailModal(
                         </div>
                     </div>
                     <div class="detail-section">
-                        <span class="detail-label">"Tags:"</span>
+                        <span class="detail-label">{move || i18n_stored.get_value().t("skills-detail-tags")}</span>
                         <div class="detail-tags">
                             {if skill.tags.is_empty() {
-                                view! { <span class="tag empty">"None listed"</span> }.into_any()
+                                view! { <span class="tag empty">{move || i18n_stored.get_value().t("skills-detail-none")}</span> }.into_any()
                             } else {
                                 skill.tags.iter().map(|t| {
                                     view! { <span class="tag">{t.clone()}</span> }
@@ -666,27 +674,29 @@ fn SkillsLoading() -> impl IntoView {
 fn SkillsEmpty(
     #[prop(default = None)] hub: Option<String>,
     #[prop(default = String::new())] search: String,
+    i18n: I18nContext,
 ) -> impl IntoView {
+    let i18n_stored = StoredValue::new(i18n);
     view! {
         <div class="empty-state">
             <div class="empty-icon">"📦"</div>
             {match hub {
                 Some(ref h) if search.is_empty() => view! {
                     <>
-                        <h3>{format!("Search {}", h)}</h3>
-                        <p>"Enter a keyword above to search for skills on this hub."</p>
+                        <h3>{format!("{}", i18n_stored.get_value().t("skills-empty-search").replace("{}", h))}</h3>
+                        <p>{move || i18n_stored.get_value().t("skills-empty-search-desc")}</p>
                     </>
                 }.into_any(),
                 Some(ref h) => view! {
                     <>
-                        <h3>{format!("No results on {}", h)}</h3>
-                        <p>"Try a different search term or switch to Local skills."</p>
+                        <h3>{format!("{}", i18n_stored.get_value().t("skills-empty-noresults").replace("{}", h))}</h3>
+                        <p>{move || i18n_stored.get_value().t("skills-empty-noresults-desc")}</p>
                     </>
                 }.into_any(),
                 None => view! {
                     <>
-                        <h3>"No skills found"</h3>
-                        <p>"Try adjusting your search or filters"</p>
+                        <h3>{move || i18n_stored.get_value().t("skills-empty-none")}</h3>
+                        <p>{move || i18n_stored.get_value().t("skills-empty-none-desc")}</p>
                     </>
                 }.into_any(),
             }}
@@ -695,17 +705,18 @@ fn SkillsEmpty(
 }
 
 #[component]
-fn SkillsError(#[prop(into)] message: String) -> impl IntoView {
+fn SkillsError(#[prop(into)] message: String, i18n: I18nContext) -> impl IntoView {
+    let i18n_stored = StoredValue::new(i18n);
     let is_hub_unavailable = message.contains("502") || message.contains("503") || message.contains("unavailable");
     view! {
         <div class="error-state">
             <div class="error-icon">"⚠️"</div>
-            <h3>"Failed to load skills"</h3>
+            <h3>{move || i18n_stored.get_value().t("skills-error-title")}</h3>
             {if is_hub_unavailable {
                 view! {
                     <>
-                        <p>"The skill hub is currently unreachable."</p>
-                        <p class="text-muted">"Please switch to Local skills or check Gateway network configuration."</p>
+                        <p>{move || i18n_stored.get_value().t("skills-error-unavailable")}</p>
+                        <p class="text-muted">{move || i18n_stored.get_value().t("skills-error-unavailable-hint")}</p>
                     </>
                 }.into_any()
             } else {
@@ -718,7 +729,7 @@ fn SkillsError(#[prop(into)] message: String) -> impl IntoView {
                     let _ = window.location().reload();
                 }
             >
-                "Retry"
+                {move || i18n_stored.get_value().t("skills-error-retry")}
             </button>
         </div>
     }
