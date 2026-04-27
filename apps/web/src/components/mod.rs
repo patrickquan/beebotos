@@ -7,6 +7,7 @@ pub mod footer;
 pub mod guard;
 pub mod info_item;
 pub mod loading;
+pub mod markdown;
 pub mod modal;
 pub mod nav;
 pub mod pagination;
@@ -33,6 +34,7 @@ pub use loading::{
     CardSkeleton, FadeIn, InlineLoading, ListItemSkeleton, PageLoading, ProgressiveLoading,
     ShimmerPlaceholder, SkeletonGrid, StatsCardSkeleton, TableSkeleton,
 };
+pub use markdown::{render_markdown, InlineMarkdown, MarkdownRenderer};
 pub use modal::Modal;
 pub use nav::Nav;
 pub use pagination::{LoadMoreTrigger, PageSizeSelector, Pagination, PaginationState, VirtualList};
