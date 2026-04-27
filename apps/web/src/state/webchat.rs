@@ -1,8 +1,9 @@
-//! WebChat 状态管理
+//! WebChat 状态管理（OpenClaw 流式传输集成）
 
 use leptos::prelude::*;
 
-use crate::webchat::{ChatMessage, ChatSession, SideQuestion, TokenUsage, UsagePanel};
+use crate::gateway::websocket::{ChatEventPayload, ChatEventType, WsConnectionStatus, WsEventHandler};
+use crate::webchat::{ChatMessage, ChatSession, MessageRole, SideQuestion, TokenUsage, UsagePanel};
 
 /// WebChat 状态
 #[derive(Clone, Debug)]
@@ -21,6 +22,10 @@ pub struct WebchatState {
     pub is_streaming: RwSignal<bool>,
     /// 流式内容缓冲区
     pub streaming_content: RwSignal<String>,
+    /// 当前流式运行的 run_id
+    pub current_run_id: RwSignal<Option<String>>,
+    /// WebSocket 连接状态
+    pub ws_status: RwSignal<WsConnectionStatus>,
     /// 用量统计
     pub usage: RwSignal<UsagePanel>,
     /// 侧边提问列表
@@ -41,6 +46,8 @@ impl WebchatState {
             is_sending: RwSignal::new(false),
             is_streaming: RwSignal::new(false),
             streaming_content: RwSignal::new(String::new()),
+            current_run_id: RwSignal::new(None),
+            ws_status: RwSignal::new(WsConnectionStatus::Disconnected),
             usage: RwSignal::new(UsagePanel {
                 session_usage: TokenUsage::new("default"),
                 daily_usage: TokenUsage::new("default"),
@@ -87,9 +94,10 @@ impl WebchatState {
     }
 
     /// 开始流式接收
-    pub fn start_streaming(&self) {
+    pub fn start_streaming(&self, run_id: impl Into<String>) {
         self.is_streaming.set(true);
         self.streaming_content.set(String::new());
+        self.current_run_id.set(Some(run_id.into()));
     }
 
     /// 追加流式内容
@@ -107,7 +115,7 @@ impl WebchatState {
         if !content.is_empty() {
             let message = ChatMessage {
                 id: uuid::Uuid::new_v4().to_string(),
-                role: crate::webchat::MessageRole::Assistant,
+                role: MessageRole::Assistant,
                 content,
                 timestamp: chrono::Utc::now().to_rfc3339(),
                 attachments: vec![],
@@ -117,6 +125,56 @@ impl WebchatState {
             self.add_message(message);
         }
         self.streaming_content.set(String::new());
+        self.current_run_id.set(None);
+    }
+
+    /// 处理 WebSocket chat 事件
+    pub fn handle_chat_event(&self, event: ChatEventPayload) {
+        match event.state {
+            ChatEventType::Delta => {
+                // 检查是否新的运行
+                let current = self.current_run_id.get();
+                if current.as_ref() != Some(&event.run_id) {
+                    // 如果有之前的流式内容，先结束它
+                    if self.is_streaming.get() {
+                        self.finish_streaming();
+                    }
+                    self.start_streaming(&event.run_id);
+                }
+
+                // 提取文本内容
+                if let Some(message) = event.message {
+                    for block in message.content {
+                        match block {
+                            crate::gateway::websocket::ContentBlock::Text { text } => {
+                                self.append_streaming_content(text);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            ChatEventType::Final => {
+                // 结束流式接收
+                if self.is_streaming.get() {
+                    self.finish_streaming();
+                }
+                self.is_sending.set(false);
+            }
+            ChatEventType::Aborted => {
+                self.is_streaming.set(false);
+                self.streaming_content.set(String::new());
+                self.current_run_id.set(None);
+                self.is_sending.set(false);
+            }
+            ChatEventType::Error => {
+                self.is_streaming.set(false);
+                self.streaming_content.set(String::new());
+                self.current_run_id.set(None);
+                self.is_sending.set(false);
+                self.set_error(event.error_message);
+            }
+        }
     }
 
     /// 设置错误
@@ -177,7 +235,7 @@ impl ChatUIState {
             show_new_session_modal: RwSignal::new(false),
             show_settings_modal: RwSignal::new(false),
             search_query: RwSignal::new(String::new()),
-            scroll_to_bottom: RwSignal::new(false),
+            scroll_to_bottom: RwSignal::new(true),
         }
     }
 
@@ -252,6 +310,32 @@ impl SessionUIState {
 impl Default for SessionUIState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// WebSocket 事件处理器 —— 将 Gateway 事件转换为 WebchatState 更新
+#[derive(Clone)]
+pub struct WebchatWsHandler {
+    state: WebchatState,
+}
+
+impl WebchatWsHandler {
+    pub fn new(state: WebchatState) -> Self {
+        Self { state }
+    }
+}
+
+impl WsEventHandler for WebchatWsHandler {
+    fn on_status_change(&self, status: WsConnectionStatus) {
+        self.state.ws_status.set(status);
+    }
+
+    fn on_chat_event(&self, event: ChatEventPayload) {
+        self.state.handle_chat_event(event);
+    }
+
+    fn on_error(&self, error: String) {
+        self.state.set_error(Some(error));
     }
 }
 
