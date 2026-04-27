@@ -1,7 +1,8 @@
-//! 消息项组件
+//! 消息项组件（OpenClaw 流式传输 + Markdown 渲染）
 
 use leptos::prelude::*;
 
+use crate::components::markdown::MarkdownRenderer;
 use crate::webchat::ChatMessage;
 
 /// 消息项组件
@@ -19,6 +20,23 @@ pub fn MessageItem(
         if is_streaming { "streaming" } else { "" }
     );
 
+    // 用户消息用纯文本，assistant 消息用 Markdown 渲染
+    // 流式消息也用纯文本（避免不完整的 Markdown 导致渲染问题）
+    let content_view = if is_user || is_streaming {
+        view! {
+            <div class="message-content">{message.content.clone()}</div>
+        }
+        .into_any()
+    } else {
+        let content_signal = Signal::derive(move || message.content.clone());
+        view! {
+            <div class="message-content markdown-message">
+                <MarkdownRenderer content=content_signal />
+            </div>
+        }
+        .into_any()
+    };
+
     view! {
         <div class=class>
             <div class="message-avatar">
@@ -29,9 +47,7 @@ pub fn MessageItem(
                 }}
             </div>
             <div class="message-content-wrapper">
-                <div class="message-content">
-                    {message.content.clone()}
-                </div>
+                {content_view}
                 <div class="message-meta">
                     <span class="message-time">{format_timestamp(&message.timestamp)}</span>
                     {if let Some(usage) = &message.token_usage {
@@ -41,6 +57,25 @@ pub fn MessageItem(
                     } else {
                         view! { <div /> }.into_any()
                     }}
+                </div>
+            </div>
+        </div>
+    }
+}
+
+/// 流式消息项（显示正在生成的内容）
+#[component]
+pub fn StreamingMessageItem(
+    #[prop(into)]
+    content: Signal<String>,
+) -> impl IntoView {
+    view! {
+        <div class="message assistant streaming">
+            <div class="message-avatar">{"🤖"}</div>
+            <div class="message-content-wrapper">
+                <div class="message-content">
+                    {move || content.get()}
+                    <span class="streaming-cursor">"▋"</span>
                 </div>
             </div>
         </div>
