@@ -127,3 +127,4 @@ clippy.toml*:*
 * - copy*
 *.copy.md
 .worktrees/
+.worktrees/
