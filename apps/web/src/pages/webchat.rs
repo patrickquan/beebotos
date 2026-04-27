@@ -152,7 +152,9 @@ pub fn WebchatPage() -> impl IntoView {
     let ws_client = if let Some(window) = web_sys::window() {
         let location = window.location();
         let protocol = location.protocol().unwrap_or_else(|_| "http:".to_string());
-        let hostname = location.hostname().unwrap_or_else(|_| "localhost".to_string());
+        let hostname = location
+            .hostname()
+            .unwrap_or_else(|_| "localhost".to_string());
         let port = location.port().unwrap_or_default();
         let ws_protocol = if protocol == "https:" { "wss" } else { "ws" };
         let ws_host = if port == "8090" {
@@ -177,11 +179,10 @@ pub fn WebchatPage() -> impl IntoView {
 
         // 连接
         if let Err(e) = ws.connect() {
-            web_sys::console::error_1(
-                &format!("[webchat] WebSocket connect failed: {}", e).into(),
-            );
+            web_sys::console::error_1(&format!("[webchat] WebSocket connect failed: {}", e).into());
         } else {
-            web_sys::console::log_1(&format!("[webchat] WebSocket connecting to {}", ws_url).into(),
+            web_sys::console::log_1(
+                &format!("[webchat] WebSocket connecting to {}", ws_url).into(),
             );
         }
 
@@ -201,9 +202,7 @@ pub fn WebchatPage() -> impl IntoView {
                 // 使用 session_id 作为 session_key 订阅
                 let session_key = format!("user:{}", session_id);
                 if let Err(e) = ws.subscribe(&session_key) {
-                    web_sys::console::warn_1(
-                        &format!("[webchat] subscribe failed: {}", e).into(),
-                    );
+                    web_sys::console::warn_1(&format!("[webchat] subscribe failed: {}", e).into());
                 } else {
                     web_sys::console::log_1(
                         &format!("[webchat] subscribed to {}", session_key).into(),

@@ -65,10 +65,7 @@ pub fn MessageItem(
 
 /// 流式消息项（显示正在生成的内容）
 #[component]
-pub fn StreamingMessageItem(
-    #[prop(into)]
-    content: Signal<String>,
-) -> impl IntoView {
+pub fn StreamingMessageItem(#[prop(into)] content: Signal<String>) -> impl IntoView {
     view! {
         <div class="message assistant streaming">
             <div class="message-avatar">{"🤖"}</div>

@@ -51,13 +51,20 @@ pub struct TokenUsage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentBlock {
-    Text { text: String },
-    Thinking { thinking: String },
+    Text {
+        text: String,
+    },
+    Thinking {
+        thinking: String,
+    },
     ImageUrl {
         #[serde(rename = "image_url")]
         image_url: ImageUrlContent,
     },
-    File { name: String, source: String },
+    File {
+        name: String,
+        source: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

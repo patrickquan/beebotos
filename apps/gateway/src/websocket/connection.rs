@@ -1,7 +1,8 @@
 //! WebSocket connection lifecycle (OpenClaw: ws-connection.ts)
 
-use axum::extract::ws::{Message as WsMessage, WebSocket};
 use std::sync::Arc;
+
+use axum::extract::ws::{Message as WsMessage, WebSocket};
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 use uuid::Uuid;

@@ -1,17 +1,15 @@
 //! WebSocket message handler (OpenClaw: ws-connection/message-handler.ts)
 
-use axum::extract::ws::{Message as WsMessage, WebSocket};
 use std::sync::Arc;
+
+use axum::extract::ws::{Message as WsMessage, WebSocket};
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
 use crate::websocket::connection::WsConnection;
 
 /// Handle a new WebSocket connection
-pub async fn handle_connection(
-    socket: WebSocket,
-    connections: Arc<Mutex<Vec<WsConnection>>>,
-) {
+pub async fn handle_connection(socket: WebSocket, connections: Arc<Mutex<Vec<WsConnection>>>) {
     let conn = WsConnection::new(socket);
     let conn_id = conn.conn_id.clone();
 
@@ -58,11 +56,7 @@ pub async fn handle_connection(
     });
 }
 
-async fn handle_message(
-    conn_id: &str,
-    text: &str,
-    connections: Arc<Mutex<Vec<WsConnection>>>,
-) {
+async fn handle_message(conn_id: &str, text: &str, connections: Arc<Mutex<Vec<WsConnection>>>) {
     let Ok(json) = serde_json::from_str::<serde_json::Value>(text) else {
         return;
     };

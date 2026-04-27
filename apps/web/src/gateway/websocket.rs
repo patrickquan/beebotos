@@ -365,9 +365,7 @@ impl WebSocketClient {
         let event: GatewayEvent = match serde_json::from_str(text) {
             Ok(e) => e,
             Err(err) => {
-                web_sys::console::warn_1(
-                    &format!("[ws] failed to parse message: {}", err).into(),
-                );
+                web_sys::console::warn_1(&format!("[ws] failed to parse message: {}", err).into());
                 return;
             }
         };
@@ -377,9 +375,7 @@ impl WebSocketClient {
                 web_sys::console::log_1(&"[ws] received challenge, sending auth".into());
                 self.set_status(WsConnectionStatus::Authenticating);
                 if let Err(e) = self.authenticate() {
-                    web_sys::console::error_1(
-                        &format!("[ws] auth send failed: {}", e).into(),
-                    );
+                    web_sys::console::error_1(&format!("[ws] auth send failed: {}", e).into());
                 }
             }
             ("event", "auth.success") => {

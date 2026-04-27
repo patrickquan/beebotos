@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 use std::sync::Arc;
+
 use tokio::sync::Mutex;
 
 /// Broadcast options (OpenClaw: { dropIfSlow?: boolean })
@@ -58,7 +59,8 @@ pub async fn broadcast_to_conn_ids(
     let text = msg.to_string();
     let conns = connections.lock().await;
 
-    // This is a simplified implementation; real implementation would map conn_id to connection
+    // This is a simplified implementation; real implementation would map conn_id to
+    // connection
     for conn in conns.iter() {
         let _ = conn.send(text.clone()).await;
     }

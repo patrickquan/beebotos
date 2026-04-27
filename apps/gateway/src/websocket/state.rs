@@ -1,4 +1,5 @@
-//! WebSocket state management — ChatRunRegistry, ChatRunState, subscriber registries
+//! WebSocket state management — ChatRunRegistry, ChatRunState, subscriber
+//! registries
 //!
 //! Reference: openclaw-main/src/gateway/server-chat.ts
 
@@ -168,7 +169,8 @@ impl ToolEventRecipientRegistry {
     }
 }
 
-/// Session message subscriber registry (OpenClaw: SessionMessageSubscriberRegistry)
+/// Session message subscriber registry (OpenClaw:
+/// SessionMessageSubscriberRegistry)
 #[derive(Debug, Default)]
 pub struct SessionMessageSubscriberRegistry {
     session_to_conn: HashMap<String, HashSet<String>>,

@@ -143,9 +143,11 @@ pub struct AppState {
     /// Chat run state for delta buffering and throttling
     pub chat_run_state: Arc<tokio::sync::Mutex<crate::websocket::state::ChatRunState>>,
     /// Session subscriber registry for WebSocket broadcast
-    pub session_subscribers: Arc<tokio::sync::Mutex<crate::websocket::state::SessionMessageSubscriberRegistry>>,
+    pub session_subscribers:
+        Arc<tokio::sync::Mutex<crate::websocket::state::SessionMessageSubscriberRegistry>>,
     /// Tool event recipient registry
-    pub tool_event_recipients: Arc<tokio::sync::Mutex<crate::websocket::state::ToolEventRecipientRegistry>>,
+    pub tool_event_recipients:
+        Arc<tokio::sync::Mutex<crate::websocket::state::ToolEventRecipientRegistry>>,
     /// Webhook handler state
     pub webhook_state: Arc<RwLock<handlers::http::webhooks::WebhookHandlerState>>,
     /// Channel registry for messaging platforms

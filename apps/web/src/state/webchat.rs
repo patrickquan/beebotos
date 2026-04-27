@@ -2,7 +2,9 @@
 
 use leptos::prelude::*;
 
-use crate::gateway::websocket::{ChatEventPayload, ChatEventType, WsConnectionStatus, WsEventHandler};
+use crate::gateway::websocket::{
+    ChatEventPayload, ChatEventType, WsConnectionStatus, WsEventHandler,
+};
 use crate::webchat::{ChatMessage, ChatSession, MessageRole, SideQuestion, TokenUsage, UsagePanel};
 
 /// WebChat 状态

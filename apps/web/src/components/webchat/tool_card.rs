@@ -54,10 +54,7 @@ pub fn ToolCallCard(
         let args = args_store.get_value();
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&args) {
             if let Some(obj) = json.as_object() {
-                let pairs: Vec<String> = obj
-                    .iter()
-                    .map(|(k, v)| format!("{}={}", k, v))
-                    .collect();
+                let pairs: Vec<String> = obj.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
                 pairs.join(", ")
             } else {
                 args
@@ -119,10 +116,7 @@ pub fn ToolCallCard(
 
 /// 工具调用列表（显示多个工具调用）
 #[component]
-pub fn ToolCallList(
-    #[prop(into)]
-    tools: Vec<ToolCallItem>,
-) -> impl IntoView {
+pub fn ToolCallList(#[prop(into)] tools: Vec<ToolCallItem>) -> impl IntoView {
     view! {
         <div class="tool-call-list">
             {tools.into_iter().map(|tool| {

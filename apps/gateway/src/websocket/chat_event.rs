@@ -1,14 +1,17 @@
-//! Chat event handler — emitChatDelta, flushBufferedChatDeltaIfNeeded, emitChatFinal
+//! Chat event handler — emitChatDelta, flushBufferedChatDeltaIfNeeded,
+//! emitChatFinal
 //!
 //! Reference: openclaw-main/src/gateway/server-chat.ts::createAgentEventHandler
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use beebotos_agents::stream::sanitize_for_display;
+use tokio::sync::Mutex;
 
 use crate::websocket::broadcast::BroadcastOptions;
 use crate::websocket::state::ChatRunState;
 use crate::websocket::types::{AssistantMessage, ChatEvent, ChatEventState, ContentBlock};
-use beebotos_agents::stream::sanitize_for_display;
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 /// Delta throttle constant (OpenClaw: 150ms)
 const DELTA_THROTTLE_MS: u64 = 150;
@@ -43,19 +46,24 @@ impl ChatEventHandler {
 
         let mut state = self.run_state.lock().await;
 
-        let previous_raw = state.raw_buffers.get(client_run_id).cloned().unwrap_or_default();
-        let merged_raw = resolve_merged_assistant_text(
-            &previous_raw,
-            &cleaned_text,
-            cleaned_delta.as_deref(),
-        );
+        let previous_raw = state
+            .raw_buffers
+            .get(client_run_id)
+            .cloned()
+            .unwrap_or_default();
+        let merged_raw =
+            resolve_merged_assistant_text(&previous_raw, &cleaned_text, cleaned_delta.as_deref());
 
         if merged_raw.is_empty() {
             return;
         }
 
-        state.raw_buffers.insert(client_run_id.to_string(), merged_raw.clone());
-        state.buffers.insert(client_run_id.to_string(), merged_raw.clone());
+        state
+            .raw_buffers
+            .insert(client_run_id.to_string(), merged_raw.clone());
+        state
+            .buffers
+            .insert(client_run_id.to_string(), merged_raw.clone());
 
         let now = current_timestamp_ms();
         let last = state.delta_sent_at.get(client_run_id).copied().unwrap_or(0);
@@ -90,10 +98,15 @@ impl ChatEventHandler {
         })
         .unwrap_or_default();
 
-        broadcast_fn("chat".to_string(), payload, Some(BroadcastOptions { drop_if_slow: true }));
+        broadcast_fn(
+            "chat".to_string(),
+            payload,
+            Some(BroadcastOptions { drop_if_slow: true }),
+        );
     }
 
-    /// Flush buffered chat delta before tool events (OpenClaw: flushBufferedChatDeltaIfNeeded)
+    /// Flush buffered chat delta before tool events (OpenClaw:
+    /// flushBufferedChatDeltaIfNeeded)
     pub async fn flush_buffered_chat_delta(
         &self,
         session_key: &str,
@@ -104,7 +117,11 @@ impl ChatEventHandler {
     ) {
         let mut state = self.run_state.lock().await;
 
-        let text = state.buffers.get(client_run_id).cloned().unwrap_or_default();
+        let text = state
+            .buffers
+            .get(client_run_id)
+            .cloned()
+            .unwrap_or_default();
         let text = text.trim();
 
         if text.is_empty() {
@@ -128,7 +145,9 @@ impl ChatEventHandler {
             state: ChatEventState::Delta,
             message: Some(AssistantMessage {
                 role: "assistant".to_string(),
-                content: vec![ContentBlock::Text { text: text.to_string() }],
+                content: vec![ContentBlock::Text {
+                    text: text.to_string(),
+                }],
                 timestamp: now,
                 stop_reason: None,
                 api: None,
@@ -143,7 +162,11 @@ impl ChatEventHandler {
         })
         .unwrap_or_default();
 
-        broadcast_fn("chat".to_string(), payload, Some(BroadcastOptions { drop_if_slow: true }));
+        broadcast_fn(
+            "chat".to_string(),
+            payload,
+            Some(BroadcastOptions { drop_if_slow: true }),
+        );
         state
             .delta_last_broadcast_len
             .insert(client_run_id.to_string(), text.len());
@@ -165,7 +188,11 @@ impl ChatEventHandler {
     ) {
         let mut state = self.run_state.lock().await;
 
-        let text = state.buffers.get(client_run_id).cloned().unwrap_or_default();
+        let text = state
+            .buffers
+            .get(client_run_id)
+            .cloned()
+            .unwrap_or_default();
 
         state.delta_last_broadcast_len.remove(client_run_id);
         state.raw_buffers.remove(client_run_id);
@@ -208,7 +235,8 @@ impl ChatEventHandler {
     }
 }
 
-/// Merge assistant text with deduplication (OpenClaw: resolveMergedAssistantText)
+/// Merge assistant text with deduplication (OpenClaw:
+/// resolveMergedAssistantText)
 fn resolve_merged_assistant_text(
     previous_text: &str,
     next_text: &str,

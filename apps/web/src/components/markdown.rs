@@ -16,8 +16,8 @@ const DANGEROUS_TAGS: &[&str] = &[
 
 /// 危险属性前缀（将被移除）
 const DANGEROUS_ATTR_PREFIXES: &[&str] = &[
-    "onerror", "onclick", "onload", "onmouse", "onkey", "onfocus", "onblur",
-    "onsubmit", "onchange", "onscroll", "ontoggle",
+    "onerror", "onclick", "onload", "onmouse", "onkey", "onfocus", "onblur", "onsubmit",
+    "onchange", "onscroll", "ontoggle",
 ];
 
 /// 将 Markdown 文本渲染为 HTML 字符串，并进行安全清理
@@ -35,12 +35,11 @@ fn sanitize_html(html: &str) -> String {
     // 移除危险标签及其内容
     for tag in DANGEROUS_TAGS {
         // 匹配 <tag ...>...</tag> 和 <tag ... />
-        let open = format!("<{} ", tag);
-        let open2 = format!("<{}", tag);
+        let open = format!("<{}", tag);
         let close = format!("</{}>", tag);
 
         // 简单处理：移除从开始标签到结束标签之间的所有内容
-        while let Some(start) = result.to_lowercase().find(&open2) {
+        while let Some(start) = result.to_lowercase().find(&open) {
             let rest = &result[start..];
             let tag_end = rest.find('>').unwrap_or(rest.len());
             let after_tag = start + tag_end + 1;
@@ -126,10 +125,7 @@ pub fn MarkdownRenderer(
 
 /// 内联 Markdown 渲染（用于简短文本，如消息片段）
 #[component]
-pub fn InlineMarkdown(
-    #[prop(into)]
-    content: Signal<String>,
-) -> impl IntoView {
+pub fn InlineMarkdown(#[prop(into)] content: Signal<String>) -> impl IntoView {
     let html_content = Memo::new(move |_| {
         let text = content.get();
         // 对于内联渲染，简单处理换行和强调
@@ -163,7 +159,11 @@ mod tests {
         let html = render_markdown(md);
         assert!(html.contains("<pre>"), "expected <pre> in {:?}", html);
         assert!(html.contains("<code"), "expected <code in {:?}", html);
-        assert!(html.contains("fn main() {}"), "expected code content in {:?}", html);
+        assert!(
+            html.contains("fn main() {}"),
+            "expected code content in {:?}",
+            html
+        );
     }
 
     #[test]
