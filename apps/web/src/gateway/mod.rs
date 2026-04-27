@@ -15,7 +15,7 @@ pub mod websocket;
 
 pub use auth::{GatewayAuth, TokenManager};
 pub use scopes::{GatewayScope, ScopeManager};
-pub use websocket::{WebSocketClient, WebSocketMessage};
+pub use websocket::{ChatEventPayload, WebSocketClient, WsConnectionStatus, WsEventHandler};
 
 /// Gateway 配置
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -151,14 +151,13 @@ impl GatewayClient {
     }
 
     /// 连接到 Gateway
-    pub async fn connect(&mut self) -> Result<(), GatewayError> {
+    pub fn connect(&mut self) -> Result<(), GatewayError> {
         self.status = GatewayStatus::Connecting;
 
-        // 创建 WebSocket 连接
-        let mut ws_client = WebSocketClient::new(&self.config.websocket_url);
+        let ws_client = WebSocketClient::new(&self.config.websocket_url);
 
-        match ws_client.connect().await {
-            Ok(_) => {
+        match ws_client.connect() {
+            Ok(()) => {
                 self.status = GatewayStatus::Connected;
                 self.websocket = Some(ws_client);
                 Ok(())
@@ -172,24 +171,19 @@ impl GatewayClient {
 
     /// 断开连接
     pub fn disconnect(&mut self) {
-        if let Some(mut ws) = self.websocket.take() {
+        if let Some(ws) = self.websocket.take() {
             ws.disconnect();
         }
         self.status = GatewayStatus::Disconnected;
     }
 
     /// 认证
-    pub async fn authenticate(&mut self, token: &str) -> Result<(), GatewayError> {
+    pub fn authenticate(&mut self, token: &str) -> Result<(), GatewayError> {
         self.status = GatewayStatus::Authenticating;
 
-        if let Some(ws) = &mut self.websocket {
-            // 发送认证消息
-            let auth_msg = WebSocketMessage::Auth {
-                token: token.to_string(),
-            };
-
-            ws.send(auth_msg)
-                .await
+        if let Some(ws) = &self.websocket {
+            ws.set_token(token);
+            ws.authenticate()
                 .map_err(|e| GatewayError::AuthFailed(e.to_string()))?;
 
             self.status = GatewayStatus::Authenticated;
@@ -199,15 +193,26 @@ impl GatewayClient {
         }
     }
 
-    /// 订阅频道
-    pub async fn subscribe(&mut self, channel: &str) -> Result<(), GatewayError> {
-        if let Some(ws) = &mut self.websocket {
-            ws.subscribe(channel)
-                .await
+    /// 订阅会话
+    pub fn subscribe(&self, session_key: &str) -> Result<(), GatewayError> {
+        if let Some(ws) = &self.websocket {
+            ws.subscribe(session_key)
                 .map_err(|e| GatewayError::SubscribeFailed(e.to_string()))
         } else {
             Err(GatewayError::NotConnected)
         }
+    }
+
+    /// 设置 WebSocket 事件处理器
+    pub fn set_websocket_handler(&self, handler: Box<dyn WsEventHandler>) {
+        if let Some(ws) = &self.websocket {
+            ws.set_handler(handler);
+        }
+    }
+
+    /// 获取底层 WebSocket 客户端
+    pub fn websocket(&self) -> Option<&WebSocketClient> {
+        self.websocket.as_ref()
     }
 
     /// 检查权限范围
@@ -218,11 +223,6 @@ impl GatewayClient {
     /// 获取配置
     pub fn config(&self) -> &GatewayConfig {
         &self.config
-    }
-
-    /// 获取 WebSocket 客户端（可变）
-    pub fn websocket_mut(&mut self) -> Option<&mut WebSocketClient> {
-        self.websocket.as_mut()
     }
 }
 
