@@ -296,7 +296,8 @@ pub async fn load_builtin_skills(registry: &Arc<SkillRegistry>) {
             // 🆕 FIX: Parse deep markdown sections from body (without frontmatter)
             let sections = parse_markdown_sections(&body_content);
 
-            // Description: frontmatter first, then Description section, then first paragraph
+            // Description: frontmatter first, then Description section, then first
+            // paragraph
             let description = frontmatter
                 .as_ref()
                 .and_then(|fm| fm.get("description").cloned())

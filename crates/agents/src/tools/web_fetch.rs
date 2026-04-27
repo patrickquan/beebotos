@@ -44,8 +44,8 @@ impl ToolHandler for WebFetchTool {
     }
 
     async fn execute(&self, arguments: &str) -> Result<String, String> {
-        let args: serde_json::Value = serde_json::from_str(arguments)
-            .map_err(|e| format!("Invalid arguments: {}", e))?;
+        let args: serde_json::Value =
+            serde_json::from_str(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
 
         let url = args["url"].as_str().ok_or("Missing url")?;
 
@@ -101,7 +101,10 @@ fn html_to_text(html: &str) -> String {
         if ch == '<' {
             in_tag = true;
             // Check for <script
-            if html[result.len().saturating_sub(1)..].to_lowercase().starts_with("<script") {
+            if html[result.len().saturating_sub(1)..]
+                .to_lowercase()
+                .starts_with("<script")
+            {
                 in_script = true;
             }
             continue;

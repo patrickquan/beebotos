@@ -138,7 +138,9 @@ impl LLMMessage {
         let id = tool_call_id.into();
         Self {
             role: Role::Tool,
-            content: vec![Content::Text { text: content.into() }],
+            content: vec![Content::Text {
+                text: content.into(),
+            }],
             name: None,
             tool_calls: None,
             // 🆕 FIX: Skip empty tool_call_id to avoid API errors

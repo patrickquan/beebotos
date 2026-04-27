@@ -52,12 +52,10 @@ impl ToolHandler for ReadFileTool {
     }
 
     async fn execute(&self, arguments: &str) -> Result<String, String> {
-        let args: serde_json::Value = serde_json::from_str(arguments)
-            .map_err(|e| format!("Invalid arguments: {}", e))?;
+        let args: serde_json::Value =
+            serde_json::from_str(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
 
-        let file_path = args["file_path"]
-            .as_str()
-            .ok_or("Missing file_path")?;
+        let file_path = args["file_path"].as_str().ok_or("Missing file_path")?;
 
         let content = tokio::fs::read_to_string(file_path)
             .await

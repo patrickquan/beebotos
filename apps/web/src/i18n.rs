@@ -286,7 +286,10 @@ pub fn init_i18n() -> I18nContext {
     zh.insert("loading-more", "加载更多...");
     // Components - error boundary
     zh.insert("error-refresh-hint", "请刷新页面后重试。");
-    zh.insert("error-async-handler", "AsyncHandler 在 CSR 模式下不受支持 - 请使用 LocalResource");
+    zh.insert(
+        "error-async-handler",
+        "AsyncHandler 在 CSR 模式下不受支持 - 请使用 LocalResource",
+    );
     // Components - guard
     zh.insert("auth-checking", "正在检查认证...");
     zh.insert("redirecting", "正在重定向...");
@@ -439,7 +442,10 @@ pub fn init_i18n() -> I18nContext {
     zh.insert("placeholder-agent-description", "输入智能体描述");
     zh.insert("label-model-provider", "模型提供商");
     zh.insert("label-model-name", "模型名称");
-    zh.insert("placeholder-model-name", "例如 gpt-4, claude-3-opus-20240229");
+    zh.insert(
+        "placeholder-model-name",
+        "例如 gpt-4, claude-3-opus-20240229",
+    );
     zh.insert("notification-agent-started", "智能体已启动");
     zh.insert("notification-agent-started-desc", "智能体已启动");
     zh.insert("notification-start-failed", "启动失败");
@@ -464,7 +470,10 @@ pub fn init_i18n() -> I18nContext {
     zh.insert("notification-clone-failed-desc", "克隆智能体失败");
     zh.insert("notification-update-failed", "更新失败");
     zh.insert("notification-delete-failed", "删除失败");
-    zh.insert("agent-config-hint", "智能体级别的配置选项将在此处提供。全局模型设置可在 LLM 配置中进行。");
+    zh.insert(
+        "agent-config-hint",
+        "智能体级别的配置选项将在此处提供。全局模型设置可在 LLM 配置中进行。",
+    );
     zh.insert("action-go-to-llm-config", "前往 LLM 配置");
     zh.insert("logs-loading", "加载日志...");
     zh.insert("logs-empty", "暂无日志");
@@ -497,7 +506,10 @@ pub fn init_i18n() -> I18nContext {
 
     // Browser page
     zh.insert("browser-title", "浏览器自动化");
-    zh.insert("browser-subtitle", "Chrome DevTools MCP 控制 - 兼容 OpenClaw V2026.3.13");
+    zh.insert(
+        "browser-subtitle",
+        "Chrome DevTools MCP 控制 - 兼容 OpenClaw V2026.3.13",
+    );
     zh.insert("browser-profiles", "配置文件");
     zh.insert("browser-add-profile", "添加配置文件");
     zh.insert("browser-sandboxes", "沙箱");
@@ -605,12 +617,18 @@ pub fn init_i18n() -> I18nContext {
     zh.insert("lang-ko", "한국어");
     zh.insert("settings-notifications", "通知");
     zh.insert("settings-enable-notifications", "启用通知");
-    zh.insert("settings-notifications-help", "接收关于智能体状态和 DAO 治理的提醒");
+    zh.insert(
+        "settings-notifications-help",
+        "接收关于智能体状态和 DAO 治理的提醒",
+    );
     zh.insert("settings-auto-update", "自动更新");
     zh.insert("settings-auto-update-help", "自动更新到最新版本");
     zh.insert("settings-network", "网络");
     zh.insert("settings-api-endpoint", "API 端点");
-    zh.insert("settings-api-endpoint-help", "自定义 API 端点（留空使用默认）");
+    zh.insert(
+        "settings-api-endpoint-help",
+        "自定义 API 端点（留空使用默认）",
+    );
     zh.insert("settings-wallet", "钱包");
     zh.insert("settings-wallet-address", "钱包地址");
     zh.insert("settings-wallet-help", "用于参与 DAO 的钱包地址");
@@ -620,7 +638,10 @@ pub fn init_i18n() -> I18nContext {
     zh.insert("settings-ai-config-help", "查看全局 LLM 提供商设置和指标");
     zh.insert("settings-open-llm-config", "打开 LLM 配置 →");
     zh.insert("settings-gateway-setup", "网关设置");
-    zh.insert("settings-gateway-setup-help", "运行配置向导来设置或重新配置网关");
+    zh.insert(
+        "settings-gateway-setup-help",
+        "运行配置向导来设置或重新配置网关",
+    );
     zh.insert("settings-config-wizard", "配置向导 →");
     zh.insert("settings-system", "系统");
     zh.insert("settings-version", "版本");
@@ -640,11 +661,20 @@ pub fn init_i18n() -> I18nContext {
     zh.insert("setup-mode-fresh", "从头开始");
     zh.insert("setup-mode-fresh-desc", "从零开始创建新配置");
     zh.insert("setup-mode-minimal", "最小化");
-    zh.insert("setup-mode-minimal-desc", "SQLite + Kimi + WebChat — 用于本地测试");
+    zh.insert(
+        "setup-mode-minimal-desc",
+        "SQLite + Kimi + WebChat — 用于本地测试",
+    );
     zh.insert("setup-mode-standard", "标准");
-    zh.insert("setup-mode-standard-desc", "多提供商 + 5 个频道 — 用于生产环境");
+    zh.insert(
+        "setup-mode-standard-desc",
+        "多提供商 + 5 个频道 — 用于生产环境",
+    );
     zh.insert("setup-mode-enterprise", "企业版");
-    zh.insert("setup-mode-enterprise-desc", "Postgres + TLS + OTLP — 完整堆栈");
+    zh.insert(
+        "setup-mode-enterprise-desc",
+        "Postgres + TLS + OTLP — 完整堆栈",
+    );
     zh.insert("setup-server-title", "服务器配置");
     zh.insert("setup-server-desc", "配置 HTTP/gRPC 服务器设置");
     zh.insert("setup-server-host", "主机");
@@ -692,7 +722,10 @@ pub fn init_i18n() -> I18nContext {
     zh.insert("setup-llm-base-url", "基础 URL");
     zh.insert("setup-llm-temperature", "温度");
     zh.insert("setup-llm-context-window", "上下文窗口");
-    zh.insert("setup-llm-provider-placeholder", "提供商名称（例如 kimi, openai）");
+    zh.insert(
+        "setup-llm-provider-placeholder",
+        "提供商名称（例如 kimi, openai）",
+    );
     zh.insert("setup-llm-add-provider", "+ 添加提供商");
     zh.insert("setup-channels-title", "频道配置");
     zh.insert("setup-channels-desc", "启用和配置通信平台");
@@ -738,18 +771,33 @@ pub fn init_i18n() -> I18nContext {
     zh.insert("setup-review-success", "✅ 所有必填字段已填写");
     zh.insert("setup-deploy-title", "部署配置");
     zh.insert("setup-deploy-desc", "导出并应用您的配置");
-    zh.insert("setup-deploy-toml-desc", "下载 beebotos.toml 并将其放置在 config/ 目录中");
+    zh.insert(
+        "setup-deploy-toml-desc",
+        "下载 beebotos.toml 并将其放置在 config/ 目录中",
+    );
     zh.insert("setup-deploy-toml-btn", "下载 beebotos.toml");
-    zh.insert("setup-deploy-env-desc", "导出为 .env 文件，用于 Docker 或 CI/CD");
+    zh.insert(
+        "setup-deploy-env-desc",
+        "导出为 .env 文件，用于 Docker 或 CI/CD",
+    );
     zh.insert("setup-deploy-env-btn", "下载 .env");
-    zh.insert("setup-deploy-docker-desc", "使用您的设置生成 docker-compose.yml");
+    zh.insert(
+        "setup-deploy-docker-desc",
+        "使用您的设置生成 docker-compose.yml",
+    );
     zh.insert("setup-deploy-docker-btn", "下载 docker-compose.yml");
-    zh.insert("setup-deploy-k8s-desc", "生成 K8s Deployment 和 Service 清单");
+    zh.insert(
+        "setup-deploy-k8s-desc",
+        "生成 K8s Deployment 和 Service 清单",
+    );
     zh.insert("setup-deploy-k8s-btn", "下载 K8s 清单");
     zh.insert("setup-deploy-instructions-title", "部署说明");
     zh.insert("setup-deploy-step1", "下载您首选的配置格式");
     zh.insert("setup-deploy-step2", "上传到您的服务器");
-    zh.insert("setup-deploy-step3", "放置在 config/ 目录中（对于 TOML）或 source .env 文件");
+    zh.insert(
+        "setup-deploy-step3",
+        "放置在 config/ 目录中（对于 TOML）或 source .env 文件",
+    );
     zh.insert("setup-deploy-step4", "重启网关服务");
     zh.insert("setup-deploy-go-settings", "前往设置");
 
@@ -757,7 +805,11 @@ pub fn init_i18n() -> I18nContext {
     zh.insert("skills-page-title", "技能 - BeeBotOS");
     zh.insert("skills-info-banner-prefix", "此市场展示 ");
     zh.insert("skills-info-banner-wasm", "WASM 运行时技能");
-    zh.insert("skills-info-banner-suffix", "（skill.wasm + skill.yaml）。skills/ 目录中的提示模板是单独的 LLM 角色定义，不显示在此处。");
+    zh.insert(
+        "skills-info-banner-suffix",
+        "（skill.wasm + skill.yaml）。skills/ 目录中的提示模板是单独的 LLM \
+         角色定义，不显示在此处。",
+    );
     zh.insert("skills-source", "来源：");
     zh.insert("skills-source-local", "本地");
     zh.insert("skills-source-clawhub", "ClawHub");
@@ -794,14 +846,23 @@ pub fn init_i18n() -> I18nContext {
     zh.insert("skills-detail-tags", "标签：");
     zh.insert("skills-detail-none", "未列出");
     zh.insert("skills-empty-search", "搜索 {}");
-    zh.insert("skills-empty-search-desc", "在上方的搜索框中输入关键词以在此 Hub 上搜索技能。");
+    zh.insert(
+        "skills-empty-search-desc",
+        "在上方的搜索框中输入关键词以在此 Hub 上搜索技能。",
+    );
     zh.insert("skills-empty-noresults", "在 {} 上没有结果");
-    zh.insert("skills-empty-noresults-desc", "尝试不同的搜索词或切换到本地技能。");
+    zh.insert(
+        "skills-empty-noresults-desc",
+        "尝试不同的搜索词或切换到本地技能。",
+    );
     zh.insert("skills-empty-none", "未找到技能");
     zh.insert("skills-empty-none-desc", "尝试调整您的搜索或筛选条件");
     zh.insert("skills-error-title", "加载技能失败");
     zh.insert("skills-error-unavailable", "技能 Hub 当前无法访问。");
-    zh.insert("skills-error-unavailable-hint", "请切换到本地技能或检查网关网络配置。");
+    zh.insert(
+        "skills-error-unavailable-hint",
+        "请切换到本地技能或检查网关网络配置。",
+    );
     zh.insert("skills-error-retry", "重试");
 
     // ==================== skill_instances.rs ====================
@@ -868,11 +929,20 @@ pub fn init_i18n() -> I18nContext {
     zh.insert("treasury-transfer", "转账");
     zh.insert("treasury-about-title", "关于金库");
     zh.insert("treasury-about-multisig", "多签保护");
-    zh.insert("treasury-about-multisig-desc", "所有提款都需要 DAO 理事会成员的多重签名");
+    zh.insert(
+        "treasury-about-multisig-desc",
+        "所有提款都需要 DAO 理事会成员的多重签名",
+    );
     zh.insert("treasury-about-transparent", "透明");
-    zh.insert("treasury-about-transparent-desc", "所有交易都记录在链上，可公开验证");
+    zh.insert(
+        "treasury-about-transparent-desc",
+        "所有交易都记录在链上，可公开验证",
+    );
     zh.insert("treasury-about-governance", "治理控制");
-    zh.insert("treasury-about-governance-desc", "重大分配需要通过 DAO 提案的社区投票");
+    zh.insert(
+        "treasury-about-governance-desc",
+        "重大分配需要通过 DAO 提案的社区投票",
+    );
     zh.insert("treasury-no-assets", "金库中暂无资产");
     zh.insert("treasury-first-deposit", "首次存入");
     zh.insert("treasury-no-transactions", "暂无最近交易");
@@ -892,7 +962,10 @@ pub fn init_i18n() -> I18nContext {
     zh.insert("webchat-load-sessions-failed", "加载会话失败");
     zh.insert("webchat-ws-error", "WebSocket 连接错误");
     zh.insert("webchat-send-failed", "发送失败");
-    zh.insert("webchat-input-placeholder", "输入消息...（使用 /btw 进行侧边提问）");
+    zh.insert(
+        "webchat-input-placeholder",
+        "输入消息...（使用 /btw 进行侧边提问）",
+    );
     zh.insert("webchat-sessions-title", "会话");
     zh.insert("webchat-new-chat", "+ 新建聊天");
     zh.insert("webchat-search-sessions", "搜索会话...");
@@ -1090,7 +1163,10 @@ pub fn init_i18n() -> I18nContext {
     en.insert("config-auto-reconnect", "Auto Reconnect");
     en.insert("scan-qr", "Scan QR");
     en.insert("click-open-wechat-scan", "Click to open WeChat scan page");
-    en.insert("wechat-scan-hint", "Please scan the QR code in the page with WeChat");
+    en.insert(
+        "wechat-scan-hint",
+        "Please scan the QR code in the page with WeChat",
+    );
     en.insert("qr-code-label", "QR Code");
     en.insert("qr-status-confirmed", "Scan successful, login complete");
     en.insert("qr-status-scanned", "Scanned, waiting for confirmation");
@@ -1181,13 +1257,22 @@ pub fn init_i18n() -> I18nContext {
     en.insert("loading-inline", "Loading...");
     en.insert("loading-more", "Loading more...");
     // Components - error boundary
-    en.insert("error-refresh-hint", "Please refresh the page and try again.");
-    en.insert("error-async-handler", "AsyncHandler not supported in CSR mode - use LocalResource");
+    en.insert(
+        "error-refresh-hint",
+        "Please refresh the page and try again.",
+    );
+    en.insert(
+        "error-async-handler",
+        "AsyncHandler not supported in CSR mode - use LocalResource",
+    );
     // Components - guard
     en.insert("auth-checking", "Checking authentication...");
     en.insert("redirecting", "Redirecting...");
     en.insert("error-access-denied", "Access Denied");
-    en.insert("error-access-denied-desc", "You don't have permission to access this page.");
+    en.insert(
+        "error-access-denied-desc",
+        "You don't have permission to access this page.",
+    );
     en.insert("contact-support", "Contact Support");
     // Components - footer
     en.insert("footer-openclaw", "OpenClaw v2026.3.13");
@@ -1236,7 +1321,10 @@ pub fn init_i18n() -> I18nContext {
 
     // WebChat components
     en.insert("message-input-placeholder", "Type a message...");
-    en.insert("message-input-hint-send", "Press Enter to send, Shift+Enter for new line");
+    en.insert(
+        "message-input-hint-send",
+        "Press Enter to send, Shift+Enter for new line",
+    );
     en.insert("message-input-hint-btw", "Use /btw for side question");
     en.insert("session-list-title", "Sessions");
     en.insert("session-list-new", "+ New");
@@ -1316,10 +1404,16 @@ pub fn init_i18n() -> I18nContext {
     en.insert("provider-default", "Default");
     en.insert("platform-enabled", "Enabled");
     en.insert("platform-disabled", "Disabled");
-    en.insert("platform-config-hint", "Configure {} settings in beebotos.toml");
+    en.insert(
+        "platform-config-hint",
+        "Configure {} settings in beebotos.toml",
+    );
 
     // Agents page
-    en.insert("agents-create-first", "Create your first autonomous agent to get started");
+    en.insert(
+        "agents-create-first",
+        "Create your first autonomous agent to get started",
+    );
     en.insert("action-manage", "Manage");
     en.insert("action-start", "Start");
     en.insert("action-stop", "Stop");
@@ -1335,7 +1429,10 @@ pub fn init_i18n() -> I18nContext {
     en.insert("placeholder-agent-description", "Enter agent description");
     en.insert("label-model-provider", "Model Provider");
     en.insert("label-model-name", "Model Name");
-    en.insert("placeholder-model-name", "e.g. gpt-4, claude-3-opus-20240229");
+    en.insert(
+        "placeholder-model-name",
+        "e.g. gpt-4, claude-3-opus-20240229",
+    );
     en.insert("notification-agent-started", "Agent Started");
     en.insert("notification-agent-started-desc", "Agent has been started");
     en.insert("notification-start-failed", "Start Failed");
@@ -1355,18 +1452,28 @@ pub fn init_i18n() -> I18nContext {
     en.insert("label-name", "Name");
     en.insert("label-clone", "Clone");
     en.insert("notification-agent-cloned", "Agent Cloned");
-    en.insert("notification-agent-cloned-desc", "Agent cloned successfully");
+    en.insert(
+        "notification-agent-cloned-desc",
+        "Agent cloned successfully",
+    );
     en.insert("notification-clone-failed", "Clone Failed");
     en.insert("notification-clone-failed-desc", "Failed to clone agent");
     en.insert("notification-update-failed", "Update failed");
     en.insert("notification-delete-failed", "Delete failed");
-    en.insert("agent-config-hint", "Agent-level configuration options will be available here. Global model settings can be configured in LLM Configuration.");
+    en.insert(
+        "agent-config-hint",
+        "Agent-level configuration options will be available here. Global model settings can be \
+         configured in LLM Configuration.",
+    );
     en.insert("action-go-to-llm-config", "Go to LLM Config");
     en.insert("logs-loading", "Loading logs...");
     en.insert("logs-empty", "No logs available");
     en.insert("delete-confirm-prefix", "Are you sure you want to delete '");
     en.insert("delete-confirm-suffix", "'");
-    en.insert("delete-confirm-irreversible", "This action cannot be undone.");
+    en.insert(
+        "delete-confirm-irreversible",
+        "This action cannot be undone.",
+    );
     en.insert("section-overview", "Overview");
     en.insert("section-capabilities", "Capabilities");
     en.insert("section-recent-activity", "Recent Activity");
@@ -1393,7 +1500,10 @@ pub fn init_i18n() -> I18nContext {
 
     // Browser page
     en.insert("browser-title", "Browser Automation");
-    en.insert("browser-subtitle", "Chrome DevTools MCP Control - Compatible with OpenClaw V2026.3.13");
+    en.insert(
+        "browser-subtitle",
+        "Chrome DevTools MCP Control - Compatible with OpenClaw V2026.3.13",
+    );
     en.insert("browser-profiles", "Profiles");
     en.insert("browser-add-profile", "Add Profile");
     en.insert("browser-sandboxes", "Sandboxes");
@@ -1407,7 +1517,10 @@ pub fn init_i18n() -> I18nContext {
     en.insert("browser-select-profile", "Select a profile to connect");
     en.insert("browser-debug-console", "Debug Console");
     en.insert("browser-clear", "Clear");
-    en.insert("browser-debug-placeholder", "Debug logs will appear here...");
+    en.insert(
+        "browser-debug-placeholder",
+        "Debug logs will appear here...",
+    );
     en.insert("modal-add-profile-title", "Add Browser Profile");
     en.insert("label-profile-name", "Profile Name");
     en.insert("placeholder-profile-name", "e.g. Work Profile");
@@ -1437,18 +1550,27 @@ pub fn init_i18n() -> I18nContext {
     en.insert("proposal-type-parameter", "Parameter");
     en.insert("proposal-by", "By ");
     en.insert("proposals-empty-title", "No proposals yet");
-    en.insert("proposals-empty-desc", "Be the first to create a governance proposal");
+    en.insert(
+        "proposals-empty-desc",
+        "Be the first to create a governance proposal",
+    );
     en.insert("voted-for", "You voted For");
     en.insert("voted-against", "You voted Against");
     en.insert("action-voting", "Voting...");
     en.insert("notification-vote-submitted", "Vote Submitted");
-    en.insert("notification-vote-submitted-desc", "Your vote has been recorded successfully");
+    en.insert(
+        "notification-vote-submitted-desc",
+        "Your vote has been recorded successfully",
+    );
     en.insert("notification-vote-failed", "Vote Failed");
     en.insert("notification-vote-failed-desc", "Failed to submit vote");
 
     // LLM Config page
     en.insert("llm-config-title", "LLM Configuration");
-    en.insert("llm-config-subtitle", "Global LLM settings and real-time monitoring");
+    en.insert(
+        "llm-config-subtitle",
+        "Global LLM settings and real-time monitoring",
+    );
     en.insert("llm-global-config", "Global Configuration");
     en.insert("llm-default-provider", "Default Provider");
     en.insert("llm-max-tokens", "Max Tokens");
@@ -1501,22 +1623,40 @@ pub fn init_i18n() -> I18nContext {
     en.insert("lang-ko", "한국어");
     en.insert("settings-notifications", "Notifications");
     en.insert("settings-enable-notifications", "Enable notifications");
-    en.insert("settings-notifications-help", "Receive alerts about agent status and DAO governance");
+    en.insert(
+        "settings-notifications-help",
+        "Receive alerts about agent status and DAO governance",
+    );
     en.insert("settings-auto-update", "Auto-update");
-    en.insert("settings-auto-update-help", "Automatically update to the latest version");
+    en.insert(
+        "settings-auto-update-help",
+        "Automatically update to the latest version",
+    );
     en.insert("settings-network", "Network");
     en.insert("settings-api-endpoint", "API Endpoint");
-    en.insert("settings-api-endpoint-help", "Custom API endpoint (leave empty for default)");
+    en.insert(
+        "settings-api-endpoint-help",
+        "Custom API endpoint (leave empty for default)",
+    );
     en.insert("settings-wallet", "Wallet");
     en.insert("settings-wallet-address", "Wallet Address");
-    en.insert("settings-wallet-help", "Your wallet address for DAO participation");
+    en.insert(
+        "settings-wallet-help",
+        "Your wallet address for DAO participation",
+    );
     en.insert("settings-connect-wallet", "Connect Wallet");
     en.insert("settings-disconnect-wallet", "Disconnect");
     en.insert("settings-ai-config", "AI Configuration");
-    en.insert("settings-ai-config-help", "View global LLM provider settings and metrics");
+    en.insert(
+        "settings-ai-config-help",
+        "View global LLM provider settings and metrics",
+    );
     en.insert("settings-open-llm-config", "Open LLM Configuration →");
     en.insert("settings-gateway-setup", "Gateway Setup");
-    en.insert("settings-gateway-setup-help", "Run the configuration wizard to setup or reconfigure Gateway");
+    en.insert(
+        "settings-gateway-setup-help",
+        "Run the configuration wizard to setup or reconfigure Gateway",
+    );
     en.insert("settings-config-wizard", "Configuration Wizard →");
     en.insert("settings-system", "System");
     en.insert("settings-version", "Version");
@@ -1532,15 +1672,30 @@ pub fn init_i18n() -> I18nContext {
     // ==================== setup.rs ====================
     en.insert("setup-page-title", "Gateway Setup - BeeBotOS");
     en.insert("setup-welcome-title", "BeeBotOS Gateway Setup");
-    en.insert("setup-welcome-subtitle", "Configure your Gateway in a few simple steps");
+    en.insert(
+        "setup-welcome-subtitle",
+        "Configure your Gateway in a few simple steps",
+    );
     en.insert("setup-mode-fresh", "Start Fresh");
-    en.insert("setup-mode-fresh-desc", "Create a new configuration from scratch");
+    en.insert(
+        "setup-mode-fresh-desc",
+        "Create a new configuration from scratch",
+    );
     en.insert("setup-mode-minimal", "Minimal");
-    en.insert("setup-mode-minimal-desc", "SQLite + Kimi + WebChat — for local testing");
+    en.insert(
+        "setup-mode-minimal-desc",
+        "SQLite + Kimi + WebChat — for local testing",
+    );
     en.insert("setup-mode-standard", "Standard");
-    en.insert("setup-mode-standard-desc", "Multi-provider + 5 channels — for production");
+    en.insert(
+        "setup-mode-standard-desc",
+        "Multi-provider + 5 channels — for production",
+    );
     en.insert("setup-mode-enterprise", "Enterprise");
-    en.insert("setup-mode-enterprise-desc", "Postgres + TLS + OTLP — full stack");
+    en.insert(
+        "setup-mode-enterprise-desc",
+        "Postgres + TLS + OTLP — full stack",
+    );
     en.insert("setup-server-title", "Server Configuration");
     en.insert("setup-server-desc", "Configure HTTP/gRPC server settings");
     en.insert("setup-server-host", "Host");
@@ -1566,17 +1721,29 @@ pub fn init_i18n() -> I18nContext {
     en.insert("setup-db-connect-timeout", "Connect Timeout (seconds)");
     en.insert("setup-db-auto-migrate", "Auto Migrate on Startup");
     en.insert("setup-security-title", "JWT & Security");
-    en.insert("setup-security-desc", "Configure authentication and rate limiting");
+    en.insert(
+        "setup-security-desc",
+        "Configure authentication and rate limiting",
+    );
     en.insert("setup-security-jwt-secret", "JWT Secret");
     en.insert("setup-security-jwt-placeholder", "Min 32 characters");
-    en.insert("setup-security-jwt-help", "Used to sign JWT tokens. Keep this secure!");
+    en.insert(
+        "setup-security-jwt-help",
+        "Used to sign JWT tokens. Keep this secure!",
+    );
     en.insert("setup-security-token-expiry", "Token Expiry (seconds)");
-    en.insert("setup-security-refresh-expiry", "Refresh Token Expiry (seconds)");
+    en.insert(
+        "setup-security-refresh-expiry",
+        "Refresh Token Expiry (seconds)",
+    );
     en.insert("setup-security-enable-rate-limit", "Enable Rate Limiting");
     en.insert("setup-security-qps-limit", "QPS Limit");
     en.insert("setup-security-burst-limit", "Burst Limit");
     en.insert("setup-llm-title", "LLM Models Configuration");
-    en.insert("setup-llm-desc", "Configure AI providers and fallback chain");
+    en.insert(
+        "setup-llm-desc",
+        "Configure AI providers and fallback chain",
+    );
     en.insert("setup-llm-default-provider", "Default Provider");
     en.insert("setup-llm-max-tokens", "Max Tokens");
     en.insert("setup-llm-timeout", "Request Timeout (seconds)");
@@ -1588,10 +1755,16 @@ pub fn init_i18n() -> I18nContext {
     en.insert("setup-llm-base-url", "Base URL");
     en.insert("setup-llm-temperature", "Temperature");
     en.insert("setup-llm-context-window", "Context Window");
-    en.insert("setup-llm-provider-placeholder", "Provider name (e.g. kimi, openai)");
+    en.insert(
+        "setup-llm-provider-placeholder",
+        "Provider name (e.g. kimi, openai)",
+    );
     en.insert("setup-llm-add-provider", "+ Add Provider");
     en.insert("setup-channels-title", "Channels Configuration");
-    en.insert("setup-channels-desc", "Enable and configure communication platforms");
+    en.insert(
+        "setup-channels-desc",
+        "Enable and configure communication platforms",
+    );
     en.insert("setup-channels-context-window", "Context Window (messages)");
     en.insert("setup-channels-max-file", "Max File Size (MB)");
     en.insert("setup-channels-default-agent", "Default Agent ID");
@@ -1604,16 +1777,25 @@ pub fn init_i18n() -> I18nContext {
     en.insert("setup-blockchain-chain-id", "Chain ID");
     en.insert("setup-blockchain-rpc", "RPC URL");
     en.insert("setup-blockchain-mnemonic", "Wallet Mnemonic");
-    en.insert("setup-blockchain-mnemonic-placeholder", "12 or 24 word mnemonic phrase");
+    en.insert(
+        "setup-blockchain-mnemonic-placeholder",
+        "12 or 24 word mnemonic phrase",
+    );
     en.insert("setup-logging-title", "Logging & Observability");
     en.insert("setup-logging-desc", "Configure logs, metrics and tracing");
     en.insert("setup-logging-level", "Log Level");
     en.insert("setup-logging-format", "Log Format");
     en.insert("setup-logging-file-path", "Log File Path");
     en.insert("setup-logging-rotation", "Log Rotation");
-    en.insert("setup-logging-enable-metrics", "Enable Metrics (Prometheus)");
+    en.insert(
+        "setup-logging-enable-metrics",
+        "Enable Metrics (Prometheus)",
+    );
     en.insert("setup-logging-metrics-port", "Metrics Port");
-    en.insert("setup-logging-enable-tracing", "Enable OpenTelemetry Tracing");
+    en.insert(
+        "setup-logging-enable-tracing",
+        "Enable OpenTelemetry Tracing",
+    );
     en.insert("setup-logging-otlp", "OTLP Endpoint");
     en.insert("setup-logging-sampling", "Trace Sampling Rate");
     en.insert("log-trace", "Trace");
@@ -1629,23 +1811,44 @@ pub fn init_i18n() -> I18nContext {
     en.insert("log-daily", "Daily");
     en.insert("log-never", "Never");
     en.insert("setup-review-title", "Review Configuration");
-    en.insert("setup-review-desc", "Verify your settings before deployment");
+    en.insert(
+        "setup-review-desc",
+        "Verify your settings before deployment",
+    );
     en.insert("setup-review-warnings", "⚠️ Validation Warnings");
     en.insert("setup-review-success", "✅ All required fields filled");
     en.insert("setup-deploy-title", "Deploy Configuration");
     en.insert("setup-deploy-desc", "Export and apply your configuration");
-    en.insert("setup-deploy-toml-desc", "Download beebotos.toml and place it in your config/ directory");
+    en.insert(
+        "setup-deploy-toml-desc",
+        "Download beebotos.toml and place it in your config/ directory",
+    );
     en.insert("setup-deploy-toml-btn", "Download beebotos.toml");
-    en.insert("setup-deploy-env-desc", "Export as .env file for Docker or CI/CD usage");
+    en.insert(
+        "setup-deploy-env-desc",
+        "Export as .env file for Docker or CI/CD usage",
+    );
     en.insert("setup-deploy-env-btn", "Download .env");
-    en.insert("setup-deploy-docker-desc", "Generate docker-compose.yml with your settings");
+    en.insert(
+        "setup-deploy-docker-desc",
+        "Generate docker-compose.yml with your settings",
+    );
     en.insert("setup-deploy-docker-btn", "Download docker-compose.yml");
-    en.insert("setup-deploy-k8s-desc", "Generate K8s Deployment and Service manifests");
+    en.insert(
+        "setup-deploy-k8s-desc",
+        "Generate K8s Deployment and Service manifests",
+    );
     en.insert("setup-deploy-k8s-btn", "Download K8s Manifests");
     en.insert("setup-deploy-instructions-title", "Deployment Instructions");
-    en.insert("setup-deploy-step1", "Download your preferred configuration format");
+    en.insert(
+        "setup-deploy-step1",
+        "Download your preferred configuration format",
+    );
     en.insert("setup-deploy-step2", "Upload to your server");
-    en.insert("setup-deploy-step3", "Place in the config/ directory (for TOML) or source the .env file");
+    en.insert(
+        "setup-deploy-step3",
+        "Place in the config/ directory (for TOML) or source the .env file",
+    );
     en.insert("setup-deploy-step4", "Restart the Gateway service");
     en.insert("setup-deploy-go-settings", "Go to Settings");
 
@@ -1653,7 +1856,11 @@ pub fn init_i18n() -> I18nContext {
     en.insert("skills-page-title", "Skills - BeeBotOS");
     en.insert("skills-info-banner-prefix", "This marketplace shows ");
     en.insert("skills-info-banner-wasm", "WASM Runtime Skills");
-    en.insert("skills-info-banner-suffix", " (skill.wasm + skill.yaml). Prompt templates in the skills/ directory are separate LLM role definitions and not shown here.");
+    en.insert(
+        "skills-info-banner-suffix",
+        " (skill.wasm + skill.yaml). Prompt templates in the skills/ directory are separate LLM \
+         role definitions and not shown here.",
+    );
     en.insert("skills-source", "Source:");
     en.insert("skills-source-local", "Local");
     en.insert("skills-source-clawhub", "ClawHub");
@@ -1690,20 +1897,38 @@ pub fn init_i18n() -> I18nContext {
     en.insert("skills-detail-tags", "Tags:");
     en.insert("skills-detail-none", "None listed");
     en.insert("skills-empty-search", "Search {}");
-    en.insert("skills-empty-search-desc", "Enter a keyword above to search for skills on this hub.");
+    en.insert(
+        "skills-empty-search-desc",
+        "Enter a keyword above to search for skills on this hub.",
+    );
     en.insert("skills-empty-noresults", "No results on {}");
-    en.insert("skills-empty-noresults-desc", "Try a different search term or switch to Local skills.");
+    en.insert(
+        "skills-empty-noresults-desc",
+        "Try a different search term or switch to Local skills.",
+    );
     en.insert("skills-empty-none", "No skills found");
-    en.insert("skills-empty-none-desc", "Try adjusting your search or filters");
+    en.insert(
+        "skills-empty-none-desc",
+        "Try adjusting your search or filters",
+    );
     en.insert("skills-error-title", "Failed to load skills");
-    en.insert("skills-error-unavailable", "The skill hub is currently unreachable.");
-    en.insert("skills-error-unavailable-hint", "Please switch to Local skills or check Gateway network configuration.");
+    en.insert(
+        "skills-error-unavailable",
+        "The skill hub is currently unreachable.",
+    );
+    en.insert(
+        "skills-error-unavailable-hint",
+        "Please switch to Local skills or check Gateway network configuration.",
+    );
     en.insert("skills-error-retry", "Retry");
 
     // ==================== skill_instances.rs ====================
     en.insert("instances-page-title", "Skill Instances - BeeBotOS");
     en.insert("instances-title", "Skill Instances");
-    en.insert("instances-subtitle", "Manage skill instances bound to your agents");
+    en.insert(
+        "instances-subtitle",
+        "Manage skill instances bound to your agents",
+    );
     en.insert("instances-cancel", "✕ Cancel");
     en.insert("instances-new", "+ New Instance");
     en.insert("instances-create-title", "Create Instance");
@@ -1714,7 +1939,10 @@ pub fn init_i18n() -> I18nContext {
     en.insert("instances-creating", "Creating...");
     en.insert("instances-create-btn", "Create Instance");
     en.insert("instances-missing-fields-title", "Missing Fields");
-    en.insert("instances-missing-fields-msg", "Please fill in both Skill ID and Agent ID");
+    en.insert(
+        "instances-missing-fields-msg",
+        "Please fill in both Skill ID and Agent ID",
+    );
     en.insert("instances-create-success-title", "Instance Created");
     en.insert("instances-create-success-msg", "created successfully");
     en.insert("instances-create-fail-title", "Creation Failed");
@@ -1740,7 +1968,10 @@ pub fn init_i18n() -> I18nContext {
     en.insert("instances-run", "▶ Run");
     en.insert("instances-delete", "Delete");
     en.insert("instances-empty-title", "No instances yet");
-    en.insert("instances-empty-desc", "Create a new instance to bind a skill to an agent");
+    en.insert(
+        "instances-empty-desc",
+        "Create a new instance to bind a skill to an agent",
+    );
     en.insert("instances-error-title", "Failed to load instances");
 
     // ==================== treasury.rs ====================
@@ -1751,7 +1982,10 @@ pub fn init_i18n() -> I18nContext {
     en.insert("treasury-transfer-amount", "Amount (wei)");
     en.insert("treasury-transfer-submitting", "Submitting...");
     en.insert("treasury-transfer-submit", "Submit Transfer");
-    en.insert("treasury-transfer-required", "Address and amount are required");
+    en.insert(
+        "treasury-transfer-required",
+        "Address and amount are required",
+    );
     en.insert("treasury-transfer-submitted", "Transfer submitted");
     en.insert("treasury-transfer-failed", "Transfer failed");
     en.insert("treasury-total-balance", "Total Treasury Balance");
@@ -1764,18 +1998,30 @@ pub fn init_i18n() -> I18nContext {
     en.insert("treasury-transfer", "Transfer");
     en.insert("treasury-about-title", "About the Treasury");
     en.insert("treasury-about-multisig", "Multi-Sig Protected");
-    en.insert("treasury-about-multisig-desc", "All withdrawals require multiple signatures from DAO council members");
+    en.insert(
+        "treasury-about-multisig-desc",
+        "All withdrawals require multiple signatures from DAO council members",
+    );
     en.insert("treasury-about-transparent", "Transparent");
-    en.insert("treasury-about-transparent-desc", "All transactions are recorded on-chain and publicly verifiable");
+    en.insert(
+        "treasury-about-transparent-desc",
+        "All transactions are recorded on-chain and publicly verifiable",
+    );
     en.insert("treasury-about-governance", "Governance Controlled");
-    en.insert("treasury-about-governance-desc", "Major allocations require community vote through DAO proposals");
+    en.insert(
+        "treasury-about-governance-desc",
+        "Major allocations require community vote through DAO proposals",
+    );
     en.insert("treasury-no-assets", "No assets in treasury");
     en.insert("treasury-first-deposit", "Make First Deposit");
     en.insert("treasury-no-transactions", "No recent transactions");
     en.insert("treasury-error-title", "Failed to load treasury");
     en.insert("treasury-error-retry", "Retry");
     en.insert("treasury-tx-title", "Transaction History");
-    en.insert("treasury-tx-desc", "All treasury transactions are recorded on-chain");
+    en.insert(
+        "treasury-tx-desc",
+        "All treasury transactions are recorded on-chain",
+    );
     en.insert("treasury-all-transactions", "All Transactions");
     en.insert("treasury-tx-total", "total");
 
@@ -1788,7 +2034,10 @@ pub fn init_i18n() -> I18nContext {
     en.insert("webchat-load-sessions-failed", "Failed to load sessions");
     en.insert("webchat-ws-error", "WebSocket connection error");
     en.insert("webchat-send-failed", "Failed to send");
-    en.insert("webchat-input-placeholder", "Type a message... (use /btw for side question)");
+    en.insert(
+        "webchat-input-placeholder",
+        "Type a message... (use /btw for side question)",
+    );
     en.insert("webchat-sessions-title", "Sessions");
     en.insert("webchat-new-chat", "+ New Chat");
     en.insert("webchat-search-sessions", "Search sessions...");

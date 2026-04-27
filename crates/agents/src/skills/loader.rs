@@ -103,8 +103,8 @@ impl SkillLoader {
             .map_err(|e| SkillLoadError::IoError(e.to_string()))?;
 
         // Parse YAML frontmatter between --- markers
-        let (frontmatter, markdown_body) = parse_frontmatter(&content)
-            .map_err(|e| SkillLoadError::ParseError(e))?;
+        let (frontmatter, markdown_body) =
+            parse_frontmatter(&content).map_err(|e| SkillLoadError::ParseError(e))?;
 
         // Try to parse manifest from frontmatter
         let mut manifest: SkillManifest = serde_yaml::from_str(&frontmatter)
@@ -112,7 +112,9 @@ impl SkillLoader {
 
         // Extract prompt template and examples from markdown body
         let sections = parse_markdown_sections(&markdown_body);
-        manifest.prompt_template = sections.get("prompt_template").cloned()
+        manifest.prompt_template = sections
+            .get("prompt_template")
+            .cloned()
             .or_else(|| sections.get("core_function").cloned())
             .unwrap_or_default();
         manifest.examples = sections.get("examples").cloned().unwrap_or_default();

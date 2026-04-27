@@ -37,8 +37,7 @@ impl SkillLockfile {
             .await
             .map_err(|e| format!("Failed to read lockfile: {}", e))?;
 
-        serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse lockfile: {}", e))
+        serde_json::from_str(&content).map_err(|e| format!("Failed to parse lockfile: {}", e))
     }
 
     /// Save lockfile to path.

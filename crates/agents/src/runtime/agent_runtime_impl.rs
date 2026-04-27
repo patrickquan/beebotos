@@ -49,7 +49,8 @@ pub struct GatewayAgentRuntime {
     replanner: Option<Arc<dyn crate::planning::RePlanner>>,
     /// LLM interface for agent execution
     llm_interface: Option<Arc<dyn crate::communication::LLMCallInterface>>,
-    /// 🆕 TOOL-CALLING FIX: LLM provider for building LLMClient with tool support
+    /// 🆕 TOOL-CALLING FIX: LLM provider for building LLMClient with tool
+    /// support
     llm_provider: Option<Arc<dyn crate::llm::LLMProvider>>,
     /// 🟢 P2 FIX: Skill registry for WASM skill execution
     skill_registry: Option<Arc<crate::skills::SkillRegistry>>,
@@ -169,7 +170,8 @@ impl GatewayAgentRuntime {
         self
     }
 
-    /// 🆕 TOOL-CALLING FIX: Set LLM provider for building LLMClient with tool support
+    /// 🆕 TOOL-CALLING FIX: Set LLM provider for building LLMClient with tool
+    /// support
     pub fn with_llm_provider(mut self, provider: Arc<dyn crate::llm::LLMProvider>) -> Self {
         self.llm_provider = Some(provider);
         self

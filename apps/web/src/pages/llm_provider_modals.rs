@@ -70,7 +70,13 @@ pub fn ProviderConfigModal(
         });
     };
 
-    let input_type = move || if show_api_key.get() { "text" } else { "password" };
+    let input_type = move || {
+        if show_api_key.get() {
+            "text"
+        } else {
+            "password"
+        }
+    };
 
     view! {
         <Modal title=format!("配置 {}", provider.name) on_close=move |_| on_close.run(())>
@@ -405,8 +411,13 @@ pub fn AddProviderModal(
             error_msg.set(Some("Provider ID 不能为空".to_string()));
             return;
         }
-        if !pid.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_') {
-            error_msg.set(Some("Provider ID 只能包含小写字母、数字、连字符和下划线".to_string()));
+        if !pid
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+        {
+            error_msg.set(Some(
+                "Provider ID 只能包含小写字母、数字、连字符和下划线".to_string(),
+            ));
             return;
         }
         if pname.is_empty() {

@@ -103,7 +103,11 @@ impl LLMHttpClient {
                 })?;
 
             let status = response.status();
-            info!("[LLM-TRACE] HTTP response status {} after {:?}", status, send_start.elapsed());
+            info!(
+                "[LLM-TRACE] HTTP response status {} after {:?}",
+                status,
+                send_start.elapsed()
+            );
 
             if status.is_success() {
                 return Ok(response);
@@ -396,14 +400,22 @@ impl OpenAIRequestBuilder {
             let body_str = body.to_string();
             // Safe UTF-8 truncation: find last char boundary before 2000 bytes
             let preview = if body_str.len() > 2000 {
-                match body_str.char_indices().take_while(|(i, _)| *i <= 2000).last() {
+                match body_str
+                    .char_indices()
+                    .take_while(|(i, _)| *i <= 2000)
+                    .last()
+                {
                     Some((idx, _)) => &body_str[..idx],
                     None => &body_str,
                 }
             } else {
                 &body_str
             };
-            info!("[LLM-TRACE] Full request body: {} bytes, JSON: {}", body_str.len(), preview);
+            info!(
+                "[LLM-TRACE] Full request body: {} bytes, JSON: {}",
+                body_str.len(),
+                preview
+            );
         }
 
         body

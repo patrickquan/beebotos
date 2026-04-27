@@ -2,9 +2,10 @@
 //!
 //! Provides message search functionality for chat interfaces
 
-use crate::i18n::I18nContext;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
+
+use crate::i18n::I18nContext;
 
 /// Search result item
 #[derive(Clone, Debug, Serialize, Deserialize)]

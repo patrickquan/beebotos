@@ -465,7 +465,8 @@ pub struct KernelAgentBuilder {
     with_planning_engine: Option<Arc<crate::planning::PlanningEngine>>,
     with_plan_executor: Option<Arc<crate::planning::PlanExecutor>>,
     with_replanner: Option<Arc<dyn crate::planning::RePlanner>>,
-    /// 🆕 TOOL-CALLING FIX: LLM provider for building LLMClient with tool support
+    /// 🆕 TOOL-CALLING FIX: LLM provider for building LLMClient with tool
+    /// support
     with_llm_provider: Option<Arc<dyn crate::llm::LLMProvider>>,
 }
 
@@ -559,7 +560,8 @@ impl KernelAgentBuilder {
         self
     }
 
-    /// 🆕 TOOL-CALLING FIX: Set LLM provider for building LLMClient with tool support
+    /// 🆕 TOOL-CALLING FIX: Set LLM provider for building LLMClient with tool
+    /// support
     pub fn with_llm_provider(mut self, provider: Arc<dyn crate::llm::LLMProvider>) -> Self {
         self.with_llm_provider = Some(provider);
         self
@@ -600,7 +602,10 @@ impl KernelAgentBuilder {
             let llm_client = Arc::new(crate::llm::LLMClient::new(provider));
             agent = agent.with_llm_client(llm_client.clone());
             if let Err(e) = agent.register_tools(skill_registry_for_tools).await {
-                warn!("Failed to register tools for agent {}: {}", agent_config.id, e);
+                warn!(
+                    "Failed to register tools for agent {}: {}",
+                    agent_config.id, e
+                );
             }
         }
 

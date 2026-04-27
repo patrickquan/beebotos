@@ -53,10 +53,7 @@ fn get_auth_service(state: &AppState) -> Result<&AuthService, GatewayError> {
         .ok_or_else(|| GatewayError::internal("Auth service not initialized"))
 }
 
-fn generate_access_token(
-    user_id: &str,
-    state: &AppState,
-) -> Result<String, GatewayError> {
+fn generate_access_token(user_id: &str, state: &AppState) -> Result<String, GatewayError> {
     let now = Utc::now();
     let jti = Uuid::new_v4().to_string();
     let claims = Claims {

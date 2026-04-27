@@ -707,7 +707,8 @@ fn SkillsEmpty(
 #[component]
 fn SkillsError(#[prop(into)] message: String, i18n: I18nContext) -> impl IntoView {
     let i18n_stored = StoredValue::new(i18n);
-    let is_hub_unavailable = message.contains("502") || message.contains("503") || message.contains("unavailable");
+    let is_hub_unavailable =
+        message.contains("502") || message.contains("503") || message.contains("unavailable");
     view! {
         <div class="error-state">
             <div class="error-icon">"⚠️"</div>

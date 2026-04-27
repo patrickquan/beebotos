@@ -38,9 +38,10 @@ pub async fn build_skills_prompt(registry: &Arc<SkillRegistry>) -> String {
     let skills = &skills[..skills.len().min(MAX_SKILLS_IN_PROMPT)];
 
     let mut xml = String::new();
+    xml.push_str("The following skills provide specialized instructions for specific tasks.\n");
     xml.push_str(
-        "The following skills provide specialized instructions for specific tasks.\n");
-    xml.push_str("Use the read_skill tool to load a skill's file when the task matches its description.\n\n");
+        "Use the read_skill tool to load a skill's file when the task matches its description.\n\n",
+    );
     xml.push_str("<available_skills>\n");
 
     for skill in skills {

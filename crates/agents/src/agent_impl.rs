@@ -15,16 +15,18 @@ use tracing::{error, info, warn};
 
 use crate::device::{AppLifecycle, Device, DeviceAutomation};
 use crate::error::AgentError;
+use crate::llm::{Message as LlmMessage, Role as LlmRole};
 use crate::planning::{
     ExecutionResult, Plan, PlanContext, PlanExecutor, PlanId, PlanStatus, PlanStep, PlanStrategy,
     PlanningEngine, RePlanner, StepType,
 };
 use crate::task::{Artifact, Task, TaskResult, TaskType};
+use crate::tools::{
+    ExecTool, ProcessTool, ReadFileTool, SearchFilesTool, WebFetchTool, WriteFileTool,
+};
 use crate::{
     a2a, communication, events, llm, mcp, queue, skills, state_manager, types, wallet, AgentConfig,
 };
-use crate::llm::{Message as LlmMessage, Role as LlmRole};
-use crate::tools::{ExecTool, ProcessTool, ReadFileTool, SearchFilesTool, WebFetchTool, WriteFileTool};
 
 pub struct Agent {
     pub(crate) config: AgentConfig,
@@ -203,18 +205,25 @@ impl Agent {
             client
                 .register_tool(
                     "list_skills",
-                    Box::new(skills::tools::list_skills::ListSkillsTool::new(registry.clone())),
+                    Box::new(skills::tools::list_skills::ListSkillsTool::new(
+                        registry.clone(),
+                    )),
                 )
                 .await;
             client
                 .register_tool(
                     "read_skill",
-                    Box::new(skills::tools::read_skill::ReadSkillTool::new(registry.clone())),
+                    Box::new(skills::tools::read_skill::ReadSkillTool::new(
+                        registry.clone(),
+                    )),
                 )
                 .await;
         }
 
-        info!("Registered all tools on LLM client for agent {}", self.config.id);
+        info!(
+            "Registered all tools on LLM client for agent {}",
+            self.config.id
+        );
         Ok(())
     }
 
@@ -930,8 +939,9 @@ impl Agent {
         Ok((response, vec![]))
     }
 
-    /// 🆕 TOOL-CALLING FIX: Handle LLM task using the new tool-calling framework.
-    /// Builds messages with skills prompt and uses LLMClient's automatic tool loop.
+    /// 🆕 TOOL-CALLING FIX: Handle LLM task using the new tool-calling
+    /// framework. Builds messages with skills prompt and uses LLMClient's
+    /// automatic tool loop.
     async fn handle_llm_task_with_tools(
         &self,
         task: &Task,
@@ -964,11 +974,11 @@ impl Agent {
                 system_content.push_str("\n\n");
                 system_content.push_str(&skills_prompt);
                 system_content.push_str(
-                    "\n\n在回复之前：扫描 <available_skills> 中的 <description> 条目。\
-                     如果恰好有一个技能明显适用：使用 read_skill 工具读取其 SKILL.md，然后遵循它。\
-                     如果多个可能适用：选择最具体的一个，然后读取/遵循它。\
-                     如果没有明显适用的：不要读取任何 SKILL.md。\
-                     约束：永远不要预先读取多个技能；只在选择后读取。"
+                    "\n\n在回复之前：扫描 <available_skills> 中的 <description> \
+                     条目。如果恰好有一个技能明显适用：使用 read_skill 工具读取其 \
+                     SKILL.md，然后遵循它。如果多个可能适用：选择最具体的一个，然后读取/遵循它。\
+                     如果没有明显适用的：不要读取任何 \
+                     SKILL.md。约束：永远不要预先读取多个技能；只在选择后读取。",
                 );
             }
         }
@@ -1015,8 +1025,8 @@ impl Agent {
             prompt
         } else {
             format!(
-                "You are acting as the skill '{}'. {}\n\nSkill capabilities:\n{}\n\nExecute \
-                 the following task using this skill persona.",
+                "You are acting as the skill '{}'. {}\n\nSkill capabilities:\n{}\n\nExecute the \
+                 following task using this skill persona.",
                 registered_skill.skill.name,
                 manifest.description,
                 manifest

@@ -390,10 +390,7 @@ impl LLMClient {
     }
 
     /// Handle tool calls and return structured results for tool-loop use.
-    async fn handle_tool_calls(
-        &self,
-        tool_calls: &[ToolCall],
-    ) -> LLMResult<Vec<ToolResult>> {
+    async fn handle_tool_calls(&self, tool_calls: &[ToolCall]) -> LLMResult<Vec<ToolResult>> {
         let tools = self.tools.read().await;
         let mut results = Vec::with_capacity(tool_calls.len());
 
@@ -425,10 +422,7 @@ impl LLMClient {
             } else {
                 results.push(ToolResult {
                     tool_call_id: tool_call.id.clone(),
-                    content: format!(
-                        "Error: Tool '{}' not found",
-                        tool_call.function.name
-                    ),
+                    content: format!("Error: Tool '{}' not found", tool_call.function.name),
                 });
             }
         }
@@ -438,10 +432,7 @@ impl LLMClient {
 
     /// Execute a single LLM request with tool support, returning either the
     /// assistant text or a Vec of ToolResults if the model requested tools.
-    async fn execute_once_with_tools(
-        &self,
-        messages: Vec<Message>,
-    ) -> LLMResult<TurnOutcome> {
+    async fn execute_once_with_tools(&self, messages: Vec<Message>) -> LLMResult<TurnOutcome> {
         self.check_rate_limit()?;
 
         let mut request = LLMRequest {
@@ -459,7 +450,10 @@ impl LLMClient {
         drop(tools);
 
         let start = std::time::Instant::now();
-        info!("[LLM-TRACE] LLMClient calling provider.complete with {} tools", request.config.tools.as_ref().map(|t| t.len()).unwrap_or(0));
+        info!(
+            "[LLM-TRACE] LLMClient calling provider.complete with {} tools",
+            request.config.tools.as_ref().map(|t| t.len()).unwrap_or(0)
+        );
         let response = self.provider.complete(request).await?;
         let latency = start.elapsed();
         info!("[LLM-TRACE] Provider.complete returned in {:?}", latency);
@@ -516,10 +510,7 @@ impl LLMClient {
     /// Unlike `chat_with_tools`, this does NOT modify the internal context.
     /// Use this when the caller has already built the full message list
     /// (e.g. the Agent with persona + memory + skills prompt).
-    pub async fn chat_with_tools_and_messages(
-        &self,
-        messages: Vec<Message>,
-    ) -> LLMResult<String> {
+    pub async fn chat_with_tools_and_messages(&self, messages: Vec<Message>) -> LLMResult<String> {
         self.run_tool_loop(messages).await
     }
 
@@ -533,8 +524,8 @@ impl LLMClient {
     /// Core tool-call loop implementation.
     ///
     /// 1. Send messages + tool definitions to LLM
-    /// 2. If tool_calls present: execute each tool in parallel, append
-    ///    results as `Role::Tool` messages, go to step 1
+    /// 2. If tool_calls present: execute each tool in parallel, append results
+    ///    as `Role::Tool` messages, go to step 1
     /// 3. If text response: return it
     /// 4. Max 10 iterations to prevent infinite loops
     async fn run_tool_loop(&self, mut messages: Vec<Message>) -> LLMResult<String> {

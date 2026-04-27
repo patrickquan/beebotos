@@ -43,7 +43,8 @@ const PRESET_MODELS: &[(&str, &str)] = &[
     ("ollama", "llama3.2"),
 ];
 
-/// Preset provider data: (provider_id, name, protocol, base_url, icon, icon_color, type_label)
+/// Preset provider data: (provider_id, name, protocol, base_url, icon,
+/// icon_color, type_label)
 const PRESET_PROVIDERS: &[(&str, &str, &str, &str, &str, &str, &str)] = &[
     (
         "kimi",
@@ -110,7 +111,8 @@ const PRESET_PROVIDERS: &[(&str, &str, &str, &str, &str, &str, &str)] = &[
     ),
 ];
 
-/// Seed preset providers and their default models into database if they don't exist
+/// Seed preset providers and their default models into database if they don't
+/// exist
 pub async fn seed_providers(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     for (provider_id, name, protocol, base_url, icon, icon_color, type_label) in PRESET_PROVIDERS {
         let exists: bool =

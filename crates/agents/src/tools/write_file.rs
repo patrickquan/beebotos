@@ -48,15 +48,11 @@ impl ToolHandler for WriteFileTool {
     }
 
     async fn execute(&self, arguments: &str) -> Result<String, String> {
-        let args: serde_json::Value = serde_json::from_str(arguments)
-            .map_err(|e| format!("Invalid arguments: {}", e))?;
+        let args: serde_json::Value =
+            serde_json::from_str(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
 
-        let file_path = args["file_path"]
-            .as_str()
-            .ok_or("Missing file_path")?;
-        let content = args["content"]
-            .as_str()
-            .ok_or("Missing content")?;
+        let file_path = args["file_path"].as_str().ok_or("Missing file_path")?;
+        let content = args["content"].as_str().ok_or("Missing content")?;
 
         // Ensure parent directory exists
         if let Some(parent) = std::path::Path::new(file_path).parent() {

@@ -93,7 +93,11 @@ pub struct AgentItemEventData {
 }
 
 impl AgentEventPayload {
-    pub fn new(run_id: impl Into<String>, stream: AgentEventStream, data: serde_json::Value) -> Self {
+    pub fn new(
+        run_id: impl Into<String>,
+        stream: AgentEventStream,
+        data: serde_json::Value,
+    ) -> Self {
         Self {
             run_id: run_id.into(),
             seq: 0,

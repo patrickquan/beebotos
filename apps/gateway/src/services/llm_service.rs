@@ -271,7 +271,8 @@ impl LlmService {
             }
         }
 
-        // If no primary was set but we have fallbacks, use the first fallback as primary
+        // If no primary was set but we have fallbacks, use the first fallback as
+        // primary
         let primary = if let Some(p) = primary {
             p
         } else if !fallbacks.is_empty() {
