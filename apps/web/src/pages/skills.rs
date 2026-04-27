@@ -361,8 +361,23 @@ fn SkillCard(
         }
     };
 
+    let category_class = match category_icon {
+        "📈" => "category-trading",
+        "📊" => "category-data",
+        "💬" => "category-social",
+        "⚙️" => "category-automation",
+        "🔍" => "category-analysis",
+        _ => "",
+    };
+
+    let card_class = if category_class.is_empty() {
+        "card skill-card".to_string()
+    } else {
+        format!("card skill-card {}", category_class)
+    };
+
     view! {
-        <div class="card skill-card">
+        <div class=card_class>
             <div class="skill-header">
                 <div class="skill-icon">{category_icon}</div>
                 <div class="skill-meta">
