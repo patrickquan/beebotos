@@ -593,6 +593,8 @@ pub fn init_i18n() -> I18nContext {
 
     // ==================== settings.rs ====================
     zh.insert("settings-page-title", "设置 - BeeBotOS");
+    zh.insert("settings-heading", "设置");
+    zh.insert("settings-description", "管理您的偏好设置和系统配置");
     zh.insert("settings-loading", "正在加载设置...");
     zh.insert("settings-save-success", "设置保存成功");
     zh.insert("settings-save-local", "已保存到本地");
@@ -1489,6 +1491,8 @@ pub fn init_i18n() -> I18nContext {
 
     // ==================== settings.rs ====================
     en.insert("settings-page-title", "Settings - BeeBotOS");
+    en.insert("settings-heading", "Settings");
+    en.insert("settings-description", "Manage your preferences and system configuration");
     en.insert("settings-loading", "Loading settings...");
     en.insert("settings-save-success", "Settings saved successfully");
     en.insert("settings-save-local", "Saved locally");
