@@ -70,16 +70,6 @@ pub fn SkillsPage() -> impl IntoView {
                 </div>
             </div>
 
-            // === Skill Type Info Banner (P3) ===
-            <div class="info-banner">
-                <span class="info-icon">"ℹ️"</span>
-                <span>
-                    {move || i18n_stored.get_value().t("skills-info-banner-prefix")}
-                    <strong>{move || i18n_stored.get_value().t("skills-info-banner-wasm")}</strong>
-                    {move || i18n_stored.get_value().t("skills-info-banner-suffix")}
-                </span>
-            </div>
-
             <section class="skills-controls">
                 // === Hub Selector (P2) ===
                 <div class="hub-selector">

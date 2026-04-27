@@ -757,9 +757,6 @@ pub fn init_i18n() -> I18nContext {
 
     // ==================== skills.rs ====================
     zh.insert("skills-page-title", "技能 - BeeBotOS");
-    zh.insert("skills-info-banner-prefix", "此市场展示 ");
-    zh.insert("skills-info-banner-wasm", "WASM 运行时技能");
-    zh.insert("skills-info-banner-suffix", "（skill.wasm + skill.yaml）。skills/ 目录中的提示模板是单独的 LLM 角色定义，不显示在此处。");
     zh.insert("skills-source", "来源：");
     zh.insert("skills-source-local", "本地");
     zh.insert("skills-source-clawhub", "ClawHub");
@@ -1655,9 +1652,6 @@ pub fn init_i18n() -> I18nContext {
 
     // ==================== skills.rs ====================
     en.insert("skills-page-title", "Skills - BeeBotOS");
-    en.insert("skills-info-banner-prefix", "This marketplace shows ");
-    en.insert("skills-info-banner-wasm", "WASM Runtime Skills");
-    en.insert("skills-info-banner-suffix", " (skill.wasm + skill.yaml). Prompt templates in the skills/ directory are separate LLM role definitions and not shown here.");
     en.insert("skills-source", "Source:");
     en.insert("skills-source-local", "Local");
     en.insert("skills-source-clawhub", "ClawHub");
