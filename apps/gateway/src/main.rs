@@ -49,6 +49,8 @@ mod models;
 mod services;
 mod state_machine;
 mod telemetry;
+/// WebSocket chat streaming module (OpenClaw-style protocol)
+mod websocket;
 
 use beebotos_agents::communication::channel::WeChatFactory;
 use beebotos_agents::communication::channel_instance_manager::ChannelInstanceManager;
@@ -134,8 +136,16 @@ pub struct AppState {
     pub rate_limiter: Arc<RateLimitManager>,
     /// Metrics
     pub metrics: telemetry::Metrics,
-    /// WebSocket manager from gateway-lib
+    /// WebSocket manager from gateway-lib (legacy, used by WebChatChannel)
     pub ws_manager: Option<Arc<WebSocketManager>>,
+    /// WebSocket connections for OpenClaw-style chat streaming
+    pub ws_connections: Arc<tokio::sync::Mutex<Vec<crate::websocket::connection::WsConnection>>>,
+    /// Chat run state for delta buffering and throttling
+    pub chat_run_state: Arc<tokio::sync::Mutex<crate::websocket::state::ChatRunState>>,
+    /// Session subscriber registry for WebSocket broadcast
+    pub session_subscribers: Arc<tokio::sync::Mutex<crate::websocket::state::SessionMessageSubscriberRegistry>>,
+    /// Tool event recipient registry
+    pub tool_event_recipients: Arc<tokio::sync::Mutex<crate::websocket::state::ToolEventRecipientRegistry>>,
     /// Webhook handler state
     pub webhook_state: Arc<RwLock<handlers::http::webhooks::WebhookHandlerState>>,
     /// Channel registry for messaging platforms
@@ -451,6 +461,19 @@ impl AppState {
         // P2 OPTIMIZE: This is the old single-binding system. New code should use
         // UserChannelService + AgentChannelService. Run migrate-bindings API to
         // migrate.
+        // Initialize OpenClaw-style WebSocket state
+        let ws_connections = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+        let chat_run_state = Arc::new(tokio::sync::Mutex::new(
+            crate::websocket::state::ChatRunState::new(),
+        ));
+        let session_subscribers = Arc::new(tokio::sync::Mutex::new(
+            crate::websocket::state::SessionMessageSubscriberRegistry::new(),
+        ));
+        let tool_event_recipients = Arc::new(tokio::sync::Mutex::new(
+            crate::websocket::state::ToolEventRecipientRegistry::new(),
+        ));
+        info!("✅ WebSocket chat streaming state initialized");
+
         let channel_binding_store = Arc::new(
             gateway::ChannelBindingStore::new(db.clone())
                 .await
@@ -484,6 +507,10 @@ impl AppState {
             rate_limiter,
             metrics: telemetry::Metrics::new(),
             ws_manager,
+            ws_connections,
+            chat_run_state,
+            session_subscribers,
+            tool_event_recipients,
             webhook_state,
             channel_registry: None,
             channel_event_bus: None,

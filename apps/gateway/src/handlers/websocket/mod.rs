@@ -2,8 +2,9 @@
 //!
 //! Real-time communication with agents using gateway-lib's WebSocketManager.
 //!
-//! This module now delegates to gateway-lib for all WebSocket functionality,
-//! providing a unified implementation across the codebase.
+//! The `/ws` endpoint now uses our OpenClaw-style WebSocket handler for
+//! chat streaming. The legacy gateway-lib WebSocketManager is still
+//! available for status queries and admin broadcasts.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -15,10 +16,11 @@ use tracing::info;
 
 use crate::AppState;
 
-/// WebSocket upgrade handler using gateway-lib's WebSocketManager
+/// WebSocket upgrade handler using OpenClaw-style protocol
 ///
-/// This handler authenticates the user and then delegates to the
-/// gateway-lib WebSocketManager for connection management.
+/// This handler upgrades the connection and delegates to our
+/// chat-streaming WebSocket handler with challenge/auth/subscribe
+/// lifecycle.
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -31,25 +33,11 @@ pub async fn ws_handler(
         user.as_ref().map(|u| &u.user_id)
     );
 
-    // Use gateway-lib's WebSocketManager if available
-    match &state.ws_manager {
-        Some(ws_manager) => {
-            let user_id = user.map(|u| u.user_id);
-            let ws_manager = Arc::clone(ws_manager);
-            ws_manager
-                .handle_upgrade(ws, ConnectInfo(addr), user_id)
-                .await
-                .into_response()
-        }
-        None => {
-            // WebSocket not enabled
-            gateway::error::GatewayError::service_unavailable(
-                "websocket",
-                "WebSocket is not enabled in this gateway instance",
-            )
-            .into_response()
-        }
-    }
+    // Use our new OpenClaw-style WebSocket handler for chat streaming
+    let connections = state.ws_connections.clone();
+    ws.on_upgrade(move |socket| async move {
+        crate::websocket::handler::handle_connection(socket, connections).await;
+    })
 }
 
 /// WebSocket status endpoint
