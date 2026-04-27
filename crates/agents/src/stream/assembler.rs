@@ -1,9 +1,11 @@
 //! Stream assembler — compose thinking + content, handle boundary drop
 //!
-//! Reference: openclaw-main/src/tui/tui-stream-assembler.ts (TuiStreamAssembler)
+//! Reference: openclaw-main/src/tui/tui-stream-assembler.ts
+//! (TuiStreamAssembler)
+
+use std::collections::HashMap;
 
 use serde_json::Value;
-use std::collections::HashMap;
 
 /// Per-run stream state (OpenClaw: RunStreamState)
 #[derive(Debug, Clone, Default)]
@@ -71,11 +73,8 @@ impl StreamAssembler {
             state.saw_non_text_content_blocks = true;
         }
 
-        let display = compose_thinking_and_content(
-            &state.thinking_text,
-            &state.content_text,
-            show_thinking,
-        );
+        let display =
+            compose_thinking_and_content(&state.thinking_text, &state.content_text, show_thinking);
 
         state.display_text = display.clone();
 
@@ -107,9 +106,7 @@ impl StreamAssembler {
         let final_composed = final_state.display_text;
 
         let should_keep_streamed = streamed_saw_non_text
-            && is_dropped_boundary_text_block_subset(&streamed_blocks,
-                &final_state.content_blocks,
-            );
+            && is_dropped_boundary_text_block_subset(&streamed_blocks, &final_state.content_blocks);
 
         let final_text = if should_keep_streamed {
             streamed_display.clone()
@@ -131,12 +128,17 @@ impl StreamAssembler {
 }
 
 /// Extract thinking blocks from message content
-/// Reference: openclaw-main/src/tui/tui-formatters.ts::extractThinkingFromMessage
+/// Reference:
+/// openclaw-main/src/tui/tui-formatters.ts::extractThinkingFromMessage
 fn extract_thinking_from_message(message: &Value) -> Option<String> {
     let content = message.get("content")?;
 
     if let Some(text) = content.as_str() {
-        return if text.is_empty() { None } else { Some(text.to_string()) };
+        return if text.is_empty() {
+            None
+        } else {
+            Some(text.to_string())
+        };
     }
 
     let blocks = content.as_array()?;
@@ -158,12 +160,17 @@ fn extract_thinking_from_message(message: &Value) -> Option<String> {
 }
 
 /// Extract text content blocks from message (excludes thinking)
-/// Reference: openclaw-main/src/tui/tui-formatters.ts::extractContentFromMessage
+/// Reference:
+/// openclaw-main/src/tui/tui-formatters.ts::extractContentFromMessage
 fn extract_content_from_message(message: &Value) -> Option<String> {
     let content = message.get("content")?;
 
     if let Some(text) = content.as_str() {
-        return if text.trim().is_empty() { None } else { Some(text.trim().to_string()) };
+        return if text.trim().is_empty() {
+            None
+        } else {
+            Some(text.trim().to_string())
+        };
     }
 
     let blocks = content.as_array()?;
@@ -228,7 +235,9 @@ fn extract_text_blocks_and_signals(message: &Value) -> (Vec<String>, bool) {
 }
 
 /// Check if final blocks are a prefix/suffix subset of streamed blocks
-/// Reference: openclaw-main/src/tui/tui-stream-assembler.ts::isDroppedBoundaryTextBlockSubset
+/// Reference:
+/// openclaw-main/src/tui/tui-stream-assembler.
+/// ts::isDroppedBoundaryTextBlockSubset
 fn is_dropped_boundary_text_block_subset(streamed: &[String], final_blocks: &[String]) -> bool {
     if final_blocks.is_empty() || final_blocks.len() >= streamed.len() {
         return false;
@@ -265,7 +274,8 @@ fn should_preserve_boundary_dropped_text(
 }
 
 /// Compose thinking + content text
-/// Reference: openclaw-main/src/tui/tui-formatters.ts::composeThinkingAndContent
+/// Reference:
+/// openclaw-main/src/tui/tui-formatters.ts::composeThinkingAndContent
 fn compose_thinking_and_content(thinking: &str, content: &str, show_thinking: bool) -> String {
     let mut parts = Vec::new();
 
@@ -281,7 +291,8 @@ fn compose_thinking_and_content(thinking: &str, content: &str, show_thinking: bo
 }
 
 /// Resolve final assistant text with fallback chain
-/// Reference: openclaw-main/src/tui/tui-formatters.ts::resolveFinalAssistantText
+/// Reference:
+/// openclaw-main/src/tui/tui-formatters.ts::resolveFinalAssistantText
 fn resolve_final_assistant_text(
     final_text: Option<&str>,
     streamed_text: Option<&str>,
@@ -310,8 +321,9 @@ fn resolve_final_assistant_text(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use serde_json::json;
+
+    use super::*;
 
     #[test]
     fn test_ingest_delta_simple_text() {
@@ -344,18 +356,32 @@ mod tests {
 
     #[test]
     fn test_boundary_drop_prefix() {
-        let streamed = vec!["block1".to_string(), "block2".to_string(), "block3".to_string()];
+        let streamed = vec![
+            "block1".to_string(),
+            "block2".to_string(),
+            "block3".to_string(),
+        ];
         let final_blocks = vec!["block1".to_string(), "block2".to_string()];
 
-        assert!(is_dropped_boundary_text_block_subset(&streamed, &final_blocks));
+        assert!(is_dropped_boundary_text_block_subset(
+            &streamed,
+            &final_blocks
+        ));
     }
 
     #[test]
     fn test_boundary_drop_suffix() {
-        let streamed = vec!["block1".to_string(), "block2".to_string(), "block3".to_string()];
+        let streamed = vec![
+            "block1".to_string(),
+            "block2".to_string(),
+            "block3".to_string(),
+        ];
         let final_blocks = vec!["block2".to_string(), "block3".to_string()];
 
-        assert!(is_dropped_boundary_text_block_subset(&streamed, &final_blocks));
+        assert!(is_dropped_boundary_text_block_subset(
+            &streamed,
+            &final_blocks
+        ));
     }
 
     #[test]
@@ -388,7 +414,8 @@ mod tests {
     fn test_finalize_with_boundary_drop() {
         let mut assembler = StreamAssembler::new();
 
-        // Simulate streaming with a non-text block (e.g., image_url) that gets dropped in final
+        // Simulate streaming with a non-text block (e.g., image_url) that gets dropped
+        // in final
         let delta = json!({
             "role": "assistant",
             "content": [

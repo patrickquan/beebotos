@@ -47,7 +47,8 @@ impl ChatAbortController {
     }
 
     /// Register an abort controller for a run
-    /// Reference: openclaw-main/src/gateway/chat-abort.ts::registerChatAbortController
+    /// Reference:
+    /// openclaw-main/src/gateway/chat-abort.ts::registerChatAbortController
     pub fn register(
         &mut self,
         run_id: &str,
@@ -83,11 +84,7 @@ impl ChatAbortController {
 
     /// Abort a specific run
     /// Reference: openclaw-main/src/gateway/chat-abort.ts::abortChatRunById
-    pub fn abort(
-        &mut self,
-        run_id: &str,
-        session_key: &str,
-    ) -> AbortResult {
+    pub fn abort(&mut self, run_id: &str, session_key: &str) -> AbortResult {
         let Some(entry) = self.controllers.get(run_id) else {
             return AbortResult { aborted: false };
         };
@@ -103,11 +100,9 @@ impl ChatAbortController {
     }
 
     /// Abort all runs for a session
-    /// Reference: openclaw-main/src/gateway/chat-abort.ts::abortChatRunsForSessionKey
-    pub fn abort_by_session(
-        &mut self,
-        session_key: &str,
-    ) -> Vec<String> {
+    /// Reference:
+    /// openclaw-main/src/gateway/chat-abort.ts::abortChatRunsForSessionKey
+    pub fn abort_by_session(&mut self, session_key: &str) -> Vec<String> {
         let run_ids: Vec<String> = self
             .controllers
             .iter()
@@ -133,10 +128,7 @@ impl ChatAbortController {
     }
 
     /// Get a receiver for abort signals
-    pub fn get_receiver(
-        &self,
-        run_id: &str,
-    ) -> Option<tokio::sync::broadcast::Receiver<()>> {
+    pub fn get_receiver(&self, run_id: &str) -> Option<tokio::sync::broadcast::Receiver<()>> {
         self.controllers.get(run_id).map(|e| e.tx.subscribe())
     }
 
@@ -171,7 +163,14 @@ mod tests {
     #[test]
     fn test_register_and_abort() {
         let mut controller = ChatAbortController::new();
-        assert!(controller.register("run_1", "sess_1", "user:1", 30_000, None, AbortKind::ChatSend));
+        assert!(controller.register(
+            "run_1",
+            "sess_1",
+            "user:1",
+            30_000,
+            None,
+            AbortKind::ChatSend
+        ));
         assert!(!controller.is_aborted("run_1"));
 
         let result = controller.abort("run_1", "user:1");
@@ -182,7 +181,14 @@ mod tests {
     #[test]
     fn test_abort_wrong_session() {
         let mut controller = ChatAbortController::new();
-        controller.register("run_1", "sess_1", "user:1", 30_000, None, AbortKind::ChatSend);
+        controller.register(
+            "run_1",
+            "sess_1",
+            "user:1",
+            30_000,
+            None,
+            AbortKind::ChatSend,
+        );
 
         let result = controller.abort("run_1", "user:2");
         assert!(!result.aborted);
@@ -191,9 +197,30 @@ mod tests {
     #[test]
     fn test_abort_by_session() {
         let mut controller = ChatAbortController::new();
-        controller.register("run_1", "sess_1", "user:1", 30_000, None, AbortKind::ChatSend);
-        controller.register("run_2", "sess_1", "user:1", 30_000, None, AbortKind::ChatSend);
-        controller.register("run_3", "sess_2", "user:2", 30_000, None, AbortKind::ChatSend);
+        controller.register(
+            "run_1",
+            "sess_1",
+            "user:1",
+            30_000,
+            None,
+            AbortKind::ChatSend,
+        );
+        controller.register(
+            "run_2",
+            "sess_1",
+            "user:1",
+            30_000,
+            None,
+            AbortKind::ChatSend,
+        );
+        controller.register(
+            "run_3",
+            "sess_2",
+            "user:2",
+            30_000,
+            None,
+            AbortKind::ChatSend,
+        );
 
         let aborted = controller.abort_by_session("user:1");
         assert_eq!(aborted.len(), 2);

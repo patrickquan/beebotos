@@ -11,19 +11,33 @@ use regex::Regex;
 lazy_static! {
     static ref ENVELOPE_PREFIX: Regex = Regex::new(r"^\[([^\]]+)\]\s*").unwrap();
     static ref MESSAGE_ID_LINE: Regex = Regex::new(r"^\s*\[message_id:\s*[^\]]+\]\s*$").unwrap();
-    static ref DIRECTIVE_TAG: Regex = Regex::new(r"\[\[[a-zA-Z_][a-zA-Z0-9_]*(?:\s+[^\]]+)?\]\]").unwrap();
-    static ref TOOL_CALL_XML: Regex = Regex::new(r"</?(?:tool_call|function_call|tool_calls|function_calls)[^>]*>").unwrap();
+    static ref DIRECTIVE_TAG: Regex =
+        Regex::new(r"\[\[[a-zA-Z_][a-zA-Z0-9_]*(?:\s+[^\]]+)?\]\]").unwrap();
+    static ref TOOL_CALL_XML: Regex =
+        Regex::new(r"</?(?:tool_call|function_call|tool_calls|function_calls)[^>]*>").unwrap();
     static ref SILENT_TOKEN: Regex = Regex::new(r"(?i)\bNO_REPLY\b|\bno_reply\b").unwrap();
-    static ref INTERNAL_RUNTIME_PREFIX: Regex = Regex::new(r"^\[internal_runtime_context:[^\]]*\]\s*").unwrap();
-    static ref INBOUND_METADATA_PREFIX: Regex = Regex::new(r"^\[inbound_metadata:[^\]]*\]\s*").unwrap();
+    static ref INTERNAL_RUNTIME_PREFIX: Regex =
+        Regex::new(r"^\[internal_runtime_context:[^\]]*\]\s*").unwrap();
+    static ref INBOUND_METADATA_PREFIX: Regex =
+        Regex::new(r"^\[inbound_metadata:[^\]]*\]\s*").unwrap();
     static ref TIMESTAMP_ISO: Regex = Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z\b").unwrap();
     static ref TIMESTAMP_SPACE: Regex = Regex::new(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}\b").unwrap();
 }
 
 const ENVELOPE_CHANNELS: &[&str] = &[
-    "WebChat", "WhatsApp", "Telegram", "Signal", "Slack",
-    "Discord", "Google Chat", "iMessage", "Teams", "Matrix",
-    "Zalo", "Zalo Personal", "BlueBubbles",
+    "WebChat",
+    "WhatsApp",
+    "Telegram",
+    "Signal",
+    "Slack",
+    "Discord",
+    "Google Chat",
+    "iMessage",
+    "Teams",
+    "Matrix",
+    "Zalo",
+    "Zalo Personal",
+    "BlueBubbles",
 ];
 
 /// Strip envelope prefix like "[WebChat 2024-01-15 10:30] text"
@@ -46,7 +60,9 @@ fn looks_like_envelope_header(header: &str) -> bool {
     if TIMESTAMP_SPACE.is_match(header) {
         return true;
     }
-    ENVELOPE_CHANNELS.iter().any(|&channel| header.starts_with(channel))
+    ENVELOPE_CHANNELS
+        .iter()
+        .any(|&channel| header.starts_with(channel))
 }
 
 /// Strip message_id hint lines
@@ -62,7 +78,9 @@ pub fn strip_message_id_hints(text: &str) -> String {
 }
 
 /// Strip inline directive tags like [[reply_to_123]], [[audio_as_voice]]
-/// Reference: openclaw-main/src/utils/directive-tags.ts::stripInlineDirectiveTagsForDisplay
+/// Reference:
+/// openclaw-main/src/utils/directive-tags.
+/// ts::stripInlineDirectiveTagsForDisplay
 pub fn strip_inline_directive_tags(text: &str) -> String {
     DIRECTIVE_TAG.replace_all(text, "").to_string()
 }
@@ -91,7 +109,8 @@ pub fn strip_inbound_metadata(text: &str) -> String {
 }
 
 /// Full sanitization pipeline for display text
-/// Reference: openclaw-main/src/gateway/chat-sanitize.ts::stripEnvelopeFromMessage
+/// Reference:
+/// openclaw-main/src/gateway/chat-sanitize.ts::stripEnvelopeFromMessage
 pub fn sanitize_for_display(text: &str) -> String {
     let mut result = text.to_string();
     result = strip_internal_runtime_context(&result);

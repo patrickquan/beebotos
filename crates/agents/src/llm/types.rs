@@ -133,6 +133,18 @@ impl LLMMessage {
         self
     }
 
+    /// Create an assistant message with tool calls
+    pub fn assistant_with_tool_calls(text: impl Into<String>, tool_calls: &[ToolCall]) -> Self {
+        Self {
+            role: Role::Assistant,
+            content: vec![Content::Text { text: text.into() }],
+            name: None,
+            tool_calls: Some(tool_calls.to_vec()),
+            tool_call_id: None,
+            reasoning_content: None,
+        }
+    }
+
     /// Create a tool result message
     pub fn tool(tool_call_id: impl Into<String>, content: impl Into<String>) -> Self {
         let id = tool_call_id.into();

@@ -53,6 +53,34 @@ pub trait ToolHandler: Send + Sync {
     async fn execute(&self, arguments: &str) -> Result<String, String>;
 }
 
+/// Stream callback trait for receiving streaming events
+#[async_trait::async_trait]
+pub trait StreamCallback: Send + Sync {
+    /// Text delta callback — called with accumulated text and the new delta
+    async fn on_delta(&self, text: &str, delta: Option<&str>);
+
+    /// Tool call started
+    async fn on_tool_start(&self, tool_call_id: &str, name: &str, args: &str);
+
+    /// Tool call completed successfully
+    async fn on_tool_result(&self, tool_call_id: &str, result: &str);
+
+    /// Tool call error
+    async fn on_tool_error(&self, tool_call_id: &str, error: &str);
+
+    /// Thinking content received
+    async fn on_thinking(&self, text: &str);
+
+    /// Stream finalized (before tool execution or final return)
+    async fn on_final(&self, text: &str);
+
+    /// Stream error
+    async fn on_error(&self, error: &str, error_kind: Option<&str>);
+
+    /// Check if the stream has been aborted
+    fn is_aborted(&self) -> bool;
+}
+
 /// Client metrics
 #[derive(Debug, Clone, Default)]
 pub struct ClientMetrics {
@@ -622,6 +650,153 @@ impl LLMClient {
         });
 
         Ok(rx)
+    }
+
+    /// Chat with tools using streaming callbacks
+    pub async fn chat_with_tools_stream<C: StreamCallback>(
+        &self,
+        mut messages: Vec<Message>,
+        callback: &C,
+    ) -> LLMResult<String> {
+        const MAX_ITERATIONS: usize = 10;
+
+        for _iteration in 0..MAX_ITERATIONS {
+            if callback.is_aborted() {
+                return Err(LLMError::Provider("Aborted".to_string()));
+            }
+
+            self.check_rate_limit()?;
+
+            let mut request = LLMRequest {
+                messages: messages.clone(),
+                config: RequestConfig {
+                    stream: Some(true),
+                    ..self.config.clone()
+                },
+            };
+
+            // Add tools if registered
+            let tools = self.tools.read().await;
+            if !tools.is_empty() {
+                request.config.tools = Some(tools.values().map(|t| t.definition()).collect());
+                request.config.tool_choice = Some(ToolChoice::Auto("auto".to_string()));
+            }
+            drop(tools);
+
+            let mut stream = self.provider.complete_stream(request).await?;
+            let mut full_response = String::new();
+            let mut pending_tool_calls: Vec<ToolCall> = Vec::new();
+
+            while let Some(chunk) = stream.recv().await {
+                if callback.is_aborted() {
+                    return Err(LLMError::Provider("Aborted".to_string()));
+                }
+
+                for choice in chunk.choices {
+                    // Handle delta content
+                    if let Some(content) = choice.delta.content {
+                        full_response.push_str(&content);
+                        callback.on_delta(&full_response, Some(&content)).await;
+                    }
+
+                    // Collect tool calls (handle incremental arguments)
+                    if let Some(calls) = choice.delta.tool_calls {
+                        for call in calls {
+                            if let Some(existing) =
+                                pending_tool_calls.iter_mut().find(|c| c.id == call.id)
+                            {
+                                existing
+                                    .function
+                                    .arguments
+                                    .push_str(&call.function.arguments);
+                            } else {
+                                pending_tool_calls.push(call);
+                            }
+                        }
+                    }
+
+                    // Handle finish reason
+                    if let Some(reason) = choice.finish_reason {
+                        match reason.as_str() {
+                            "tool_calls" => {
+                                callback.on_final(&full_response).await;
+                                let tool_results = self
+                                    .execute_tool_calls_stream(&pending_tool_calls, callback)
+                                    .await?;
+
+                                messages.push(Message::assistant_with_tool_calls(
+                                    &full_response,
+                                    &pending_tool_calls,
+                                ));
+                                for result in tool_results {
+                                    messages
+                                        .push(Message::tool(&result.tool_call_id, &result.content));
+                                }
+                                break;
+                            }
+                            "stop" | "length" | "content_filter" => {
+                                callback.on_final(&full_response).await;
+                                return Ok(full_response);
+                            }
+                            _ => {
+                                callback.on_final(&full_response).await;
+                                return Ok(full_response);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if pending_tool_calls.is_empty() {
+                return Ok(full_response);
+            }
+        }
+
+        Err(LLMError::Provider("Max iterations reached".to_string()))
+    }
+
+    /// Execute tool calls with streaming callbacks
+    async fn execute_tool_calls_stream<C: StreamCallback>(
+        &self,
+        tool_calls: &[ToolCall],
+        callback: &C,
+    ) -> LLMResult<Vec<ToolResult>> {
+        let tools = self.tools.read().await;
+        let mut results = Vec::new();
+
+        for call in tool_calls {
+            callback
+                .on_tool_start(&call.id, &call.function.name, &call.function.arguments)
+                .await;
+
+            if let Some(handler) = tools.get(&call.function.name) {
+                match handler.execute(&call.function.arguments).await {
+                    Ok(result) => {
+                        callback.on_tool_result(&call.id, &result).await;
+                        results.push(ToolResult {
+                            tool_call_id: call.id.clone(),
+                            content: result,
+                        });
+                    }
+                    Err(err) => {
+                        callback.on_tool_error(&call.id, &err).await;
+                        results.push(ToolResult {
+                            tool_call_id: call.id.clone(),
+                            content: format!("Error: {}", err),
+                        });
+                    }
+                }
+            } else {
+                let err = format!("Tool '{}' not found", call.function.name);
+                callback.on_tool_error(&call.id, &err).await;
+                results.push(ToolResult {
+                    tool_call_id: call.id.clone(),
+                    content: err,
+                });
+            }
+        }
+
+        Ok(results)
     }
 
     /// Register a tool

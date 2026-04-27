@@ -1730,6 +1730,7 @@ dependencies = [
  "hex",
  "hkdf",
  "hmac",
+ "lazy_static",
  "lru",
  "mockall",
  "native-tls",
