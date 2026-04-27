@@ -8,15 +8,13 @@ use gloo_storage::{LocalStorage, Storage};
 use leptos::prelude::*;
 use leptos::view;
 use leptos_meta::Title;
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsCast;
 
 use crate::api::{create_client, create_webchat_service};
 use crate::components::webchat::{
     MessageInput, MessageList, SessionList, SidePanel, UsagePanelComponent,
 };
-use crate::state::{use_auth_state, use_chat_ui_state, use_webchat_state};
-use crate::utils::get_user_id;
+use crate::gateway::websocket::{WebSocketClient, WsConnectionStatus};
+use crate::state::{use_auth_state, use_chat_ui_state, use_webchat_state, WebchatWsHandler};
 use crate::webchat::{ChatMessage, MessageRole};
 
 /// 获取或创建持久化的会话 ID（仅作本地缓存，后端为准）
@@ -146,17 +144,17 @@ pub fn WebchatPage() -> impl IntoView {
         });
     });
 
-    // WebSocket 连接：订阅 webchat 频道接收 Agent 回复
-    let chat_state_for_effect = chat_state.clone();
+    // WebSocket 连接：使用 OpenClaw 风格协议
+    let chat_state_for_ws = chat_state.clone();
     let auth_state_for_ws = auth_state.clone();
-    Effect::new(move |_| {
-        let window = web_sys::window()?;
+
+    // 创建 WebSocket 客户端
+    let ws_client = if let Some(window) = web_sys::window() {
         let location = window.location();
-        let protocol = location.protocol().ok()?;
-        let hostname = location.hostname().ok()?;
-        let port = location.port().ok().unwrap_or_default();
+        let protocol = location.protocol().unwrap_or_else(|_| "http:".to_string());
+        let hostname = location.hostname().unwrap_or_else(|_| "localhost".to_string());
+        let port = location.port().unwrap_or_default();
         let ws_protocol = if protocol == "https:" { "wss" } else { "ws" };
-        // Web 服务器(8090)不代理 WebSocket，需要直连 Gateway(8000)
         let ws_host = if port == "8090" {
             format!("{}:8000", hostname)
         } else if port.is_empty() {
@@ -166,67 +164,72 @@ pub fn WebchatPage() -> impl IntoView {
         };
         let ws_url = format!("{}://{}/ws", ws_protocol, ws_host);
 
-        let ws = web_sys::WebSocket::new(&ws_url).ok()?;
-        ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
+        let ws = WebSocketClient::new(&ws_url);
 
-        let chat_state_clone = chat_state_for_effect.clone();
-        let onmessage = Closure::wrap(Box::new(move |e: web_sys::MessageEvent| {
-            if let Ok(text) = e.data().dyn_into::<js_sys::JsString>() {
-                let text_str = text.as_string().unwrap_or_default();
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text_str) {
-                    if json.get("type").and_then(|v| v.as_str()) == Some("chat_message") {
-                        if let Some(msg_json) = json.get("message") {
-                            if let Ok(message) =
-                                serde_json::from_value::<ChatMessage>(msg_json.clone())
-                            {
-                                chat_state_clone.add_message(message);
-                                chat_state_clone.is_sending.set(false);
-                            }
-                        }
-                    }
+        // 设置事件处理器
+        let handler = WebchatWsHandler::new(chat_state_for_ws.clone());
+        ws.set_handler(Box::new(handler));
+
+        // 设置 token
+        if let Some(token) = auth_state_for_ws.get_token() {
+            ws.set_token(token);
+        }
+
+        // 连接
+        if let Err(e) = ws.connect() {
+            web_sys::console::error_1(
+                &format!("[webchat] WebSocket connect failed: {}", e).into(),
+            );
+        } else {
+            web_sys::console::log_1(&format!("[webchat] WebSocket connecting to {}", ws_url).into(),
+            );
+        }
+
+        Some(ws)
+    } else {
+        None
+    };
+
+    // WebSocket 订阅：当连接成功且选中会话变化时订阅
+    let ws_client_for_sub = ws_client.clone();
+    Effect::new(move |_| {
+        let status = chat_state.ws_status.get();
+        let session_id = chat_state.current_session_id.get();
+
+        if status == WsConnectionStatus::Connected {
+            if let (Some(ws), Some(session_id)) = (ws_client_for_sub.as_ref(), session_id) {
+                // 使用 session_id 作为 session_key 订阅
+                let session_key = format!("user:{}", session_id);
+                if let Err(e) = ws.subscribe(&session_key) {
+                    web_sys::console::warn_1(
+                        &format!("[webchat] subscribe failed: {}", e).into(),
+                    );
+                } else {
+                    web_sys::console::log_1(
+                        &format!("[webchat] subscribed to {}", session_key).into(),
+                    );
                 }
             }
-        }) as Box<dyn FnMut(_)>);
-        ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
-        onmessage.forget();
+        }
+    });
 
-        let ws_for_open = ws.clone();
-        let user_id = auth_state_for_ws
-            .user
-            .get()
-            .as_ref()
-            .map(|u| u.id.clone())
-            .unwrap_or_else(get_user_id);
-        let onopen = Closure::wrap(Box::new(move |_e: web_sys::Event| {
-            let subscribe = serde_json::json!({
-                "type": "subscribe",
-                "channel": "webchat",
-                "user_id": user_id
-            });
-            let _ = ws_for_open.send_with_str(&subscribe.to_string());
-        }) as Box<dyn FnMut(_)>);
-        ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
-        onopen.forget();
+    // 提前 clone auth_state，因为 Effect 会 move 它
+    let auth_state_for_send = auth_state.clone();
+    let auth_state_for_select = auth_state.clone();
+    let auth_state_for_new = auth_state.clone();
 
-        let chat_state_err = chat_state_for_effect.clone();
-        let onerror = Closure::wrap(Box::new(move |_e: web_sys::Event| {
-            chat_state_err.set_error(Some("WebSocket connection error".to_string()));
-        }) as Box<dyn FnMut(_)>);
-        ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
-        onerror.forget();
-
-        let onclose = Closure::wrap(Box::new(move |_e: web_sys::Event| {
-            // 连接关闭，可选：自动重连逻辑
-        }) as Box<dyn FnMut(_)>);
-        ws.set_onclose(Some(onclose.as_ref().unchecked_ref()));
-        onclose.forget();
-
-        Some(())
+    // 监听 token 变化并更新 WebSocket token
+    let ws_client_for_token = ws_client.clone();
+    Effect::new(move |_| {
+        if let Some(token) = auth_state.get_token() {
+            if let Some(ws) = ws_client_for_token.as_ref() {
+                ws.set_token(token);
+            }
+        }
     });
 
     // 发送消息处理
     let chat_state_for_send = chat_state.clone();
-    let auth_state_for_send = auth_state.clone();
     let handle_send = move |content: String| {
         if chat_state_for_send.is_sending.get() {
             return;
@@ -288,12 +291,11 @@ pub fn WebchatPage() -> impl IntoView {
 
     // 切换会话
     let chat_state_select = chat_state.clone();
-    let auth_state_select = auth_state.clone();
     let on_select_session: std::sync::Arc<dyn Fn(String) + Send + Sync> = std::sync::Arc::new({
         let chat_state = chat_state_select.clone();
         move |id: String| {
             let chat_state = chat_state.clone();
-            let auth_state = auth_state_select.clone();
+            let auth_state = auth_state_for_select.clone();
             store_session_id(&id);
             chat_state.current_session_id.set(Some(id.clone()));
 
@@ -339,12 +341,11 @@ pub fn WebchatPage() -> impl IntoView {
 
     // 新建会话
     let chat_state_new = chat_state.clone();
-    let auth_state_new = auth_state.clone();
     let on_new_session: std::sync::Arc<dyn Fn() + Send + Sync> = std::sync::Arc::new({
         let chat_state = chat_state_new.clone();
         move || {
             let chat_state = chat_state.clone();
-            let auth_state = auth_state_new.clone();
+            let auth_state = auth_state_for_new.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let client = create_client();
                 client.set_auth_token(auth_state.get_token());
