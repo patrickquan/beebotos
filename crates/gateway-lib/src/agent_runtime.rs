@@ -293,6 +293,47 @@ pub trait AgentRuntime: Send + Sync + 'static {
     /// # Returns
     /// * Event receiver channel
     async fn subscribe_events(&self) -> Result<tokio::sync::broadcast::Receiver<AgentEvent>>;
+
+    /// Execute a task with streaming callbacks
+    ///
+    /// # Arguments
+    /// * `agent_id` - Target agent
+    /// * `task` - Task configuration
+    /// * `callback` - Stream callback for receiving deltas, tool events, etc.
+    ///
+    /// # Returns
+    /// * `TaskResult` - Final task execution result
+    async fn execute_task_stream(
+        &self,
+        agent_id: &AgentId,
+        task: TaskConfig,
+        callback: Box<dyn TaskStreamCallback>,
+    ) -> Result<TaskResult>;
+}
+
+/// Callback for streaming task execution results
+#[async_trait]
+pub trait TaskStreamCallback: Send + Sync {
+    /// Text delta received
+    async fn on_delta(&self, text: &str, delta: Option<&str>);
+
+    /// Tool call started
+    async fn on_tool_start(&self, tool_call_id: &str, name: &str, args: &str);
+
+    /// Tool call completed
+    async fn on_tool_result(&self, tool_call_id: &str, result: &str);
+
+    /// Tool call error
+    async fn on_tool_error(&self, tool_call_id: &str, error: &str);
+
+    /// Stream finalized
+    async fn on_final(&self, text: &str);
+
+    /// Stream error
+    async fn on_error(&self, error: &str);
+
+    /// Check if aborted
+    fn is_aborted(&self) -> bool;
 }
 
 /// Agent lifecycle events

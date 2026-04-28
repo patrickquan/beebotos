@@ -8,11 +8,9 @@ use crate::webchat::ChatMessage;
 #[component]
 pub fn MessageList(
     messages: Signal<Vec<ChatMessage>>,
-    #[prop(optional)] streaming_content: Option<String>,
-    #[prop(optional)] is_streaming: Option<bool>,
+    #[prop(optional)] streaming_content: Option<Signal<String>>,
+    #[prop(optional)] is_streaming: Option<Signal<bool>>,
 ) -> impl IntoView {
-    let is_streaming = is_streaming.unwrap_or(false);
-
     view! {
         <div class="message-list">
             <For
@@ -25,12 +23,16 @@ pub fn MessageList(
                 }
             />
 
-            {if is_streaming {
-                view! {
-                    <StreamingMessage content=streaming_content.unwrap_or_default() />
-                }.into_any()
-            } else {
-                view! { <div /> }.into_any()
+            {move || {
+                let streaming = is_streaming.as_ref().map(|s| s.get()).unwrap_or(false);
+                if streaming {
+                    let content = streaming_content.as_ref().map(|s| s.get()).unwrap_or_default();
+                    view! {
+                        <StreamingMessage content=content />
+                    }.into_any()
+                } else {
+                    view! { <div /> }.into_any()
+                }
             }}
         </div>
     }

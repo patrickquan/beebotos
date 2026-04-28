@@ -653,10 +653,10 @@ impl LLMClient {
     }
 
     /// Chat with tools using streaming callbacks
-    pub async fn chat_with_tools_stream<C: StreamCallback>(
+    pub async fn chat_with_tools_stream(
         &self,
         mut messages: Vec<Message>,
-        callback: &C,
+        callback: &dyn StreamCallback,
     ) -> LLMResult<String> {
         const MAX_ITERATIONS: usize = 10;
 
@@ -756,10 +756,10 @@ impl LLMClient {
     }
 
     /// Execute tool calls with streaming callbacks
-    async fn execute_tool_calls_stream<C: StreamCallback>(
+    async fn execute_tool_calls_stream(
         &self,
         tool_calls: &[ToolCall],
-        callback: &C,
+        callback: &dyn StreamCallback,
     ) -> LLMResult<Vec<ToolResult>> {
         let tools = self.tools.read().await;
         let mut results = Vec::new();

@@ -733,12 +733,20 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize MessageProcessor now that channel_registry is available
     if let Some(ref registry) = channel_registry {
-        app_state.message_processor = Some(Arc::new(MessageProcessor::new(
+        // 🆕 STREAMING FIX: Create ChatEventHandler for WebSocket streaming
+        let chat_event_handler = Arc::new(crate::websocket::chat_event::ChatEventHandler::new(
+            app_state.chat_run_state.clone(),
+        ));
+
+        app_state.message_processor = Some(Arc::new(MessageProcessor::with_streaming(
             app_state.llm_service.clone(),
             registry.clone(),
             app_state.memory_system.clone(),
             app_state.webchat_service.clone(),
             app_state.skill_registry.clone(),
+            chat_event_handler,
+            app_state.ws_connections.clone(),
+            app_state.session_subscribers.clone(),
         )));
     }
     let app_state = Arc::new(app_state);

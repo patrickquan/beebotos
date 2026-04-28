@@ -1,9 +1,5 @@
 //! WebSocket connection lifecycle (OpenClaw: ws-connection.ts)
 
-use std::sync::Arc;
-
-use axum::extract::ws::{Message as WsMessage, WebSocket};
-use tokio::sync::Mutex;
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -12,7 +8,8 @@ use crate::websocket::types::ConnectChallengePayload;
 /// WebSocket client connection
 pub struct WsConnection {
     pub conn_id: String,
-    pub socket: Arc<Mutex<WebSocket>>,
+    /// 发送通道 — 通过独立任务持有 WebSocket 发送端，避免锁竞争
+    pub send_tx: tokio::sync::mpsc::UnboundedSender<String>,
     pub authenticated: bool,
     pub user_id: Option<String>,
     pub subscribed_sessions: Vec<String>,
@@ -20,10 +17,10 @@ pub struct WsConnection {
 }
 
 impl WsConnection {
-    pub fn new(socket: WebSocket) -> Self {
+    pub fn new(send_tx: tokio::sync::mpsc::UnboundedSender<String>) -> Self {
         Self {
             conn_id: Uuid::new_v4().to_string(),
-            socket: Arc::new(Mutex::new(socket)),
+            send_tx,
             authenticated: false,
             user_id: None,
             subscribed_sessions: Vec::new(),
@@ -55,10 +52,8 @@ impl WsConnection {
     }
 
     pub async fn send_raw(&self, text: String) -> Result<(), String> {
-        let mut socket = self.socket.lock().await;
-        socket
-            .send(WsMessage::Text(text))
-            .await
+        self.send_tx
+            .send(text)
             .map_err(|e| format!("Failed to send: {}", e))
     }
 }

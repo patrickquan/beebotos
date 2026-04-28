@@ -230,12 +230,22 @@ impl KernelAgentConfig {
 }
 
 /// Task request sent to the kernel task
-#[derive(Debug)]
 pub struct KernelTaskRequest {
     /// Task to execute
     pub task: Task,
     /// Channel to send result back
     pub result_tx: oneshot::Sender<Result<TaskResult>>,
+    /// Optional stream callback for streaming execution
+    pub stream_callback: Option<Arc<dyn crate::llm::client::StreamCallback>>,
+}
+
+impl std::fmt::Debug for KernelTaskRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KernelTaskRequest")
+            .field("task", &self.task)
+            .field("has_stream_callback", &self.stream_callback.is_some())
+            .finish()
+    }
 }
 
 /// Agent kernel task that runs inside the kernel sandbox
@@ -367,12 +377,19 @@ impl AgentKernelTask {
     /// Handle a task execution request
     ///
     /// 🟢 P1 FIX: Capability verification before task execution
+    /// 🆕 STREAMING FIX: Support streaming callbacks for WebSocket delta events
     async fn handle_task_request(&self, request: KernelTaskRequest) {
-        let KernelTaskRequest { task, result_tx } = request;
+        let KernelTaskRequest {
+            task,
+            result_tx,
+            stream_callback,
+        } = request;
 
         info!(
-            "Agent {} executing task {} in kernel sandbox",
-            self.config.agent_id, task.id
+            "Agent {} executing task {} in kernel sandbox (streaming={})",
+            self.config.agent_id,
+            task.id,
+            stream_callback.is_some()
         );
 
         // 🟢 P1 FIX: Verify capabilities before executing task
@@ -396,10 +413,14 @@ impl AgentKernelTask {
         })
         .await;
 
-        // Execute task
+        // Execute task (streaming or blocking)
         let result = {
             let mut agent = self.agent.write().await;
-            agent.execute_task(task).await
+            if let Some(callback) = stream_callback {
+                agent.execute_task_stream(task, callback).await
+            } else {
+                agent.execute_task(task).await
+            }
         };
 
         // Handle result

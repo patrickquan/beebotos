@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use beebotos_agents::stream::sanitize_for_display;
 use tokio::sync::Mutex;
+use tracing::info;
 
 use crate::websocket::broadcast::BroadcastOptions;
 use crate::websocket::state::ChatRunState;
@@ -39,7 +40,7 @@ impl ChatEventHandler {
         seq: u64,
         text: &str,
         delta: Option<&str>,
-        broadcast_fn: &dyn Fn(String, serde_json::Value, Option<BroadcastOptions>),
+        broadcast_fn: &(dyn Fn(String, serde_json::Value, Option<BroadcastOptions>) + Send + Sync),
     ) {
         let cleaned_text = sanitize_for_display(text);
         let cleaned_delta = delta.map(sanitize_for_display);
@@ -55,6 +56,7 @@ impl ChatEventHandler {
             resolve_merged_assistant_text(&previous_raw, &cleaned_text, cleaned_delta.as_deref());
 
         if merged_raw.is_empty() {
+            info!("[CHAT-EVENT] emit_chat_delta: merged_raw is empty, skipping");
             return;
         }
 
@@ -68,6 +70,7 @@ impl ChatEventHandler {
         let now = current_timestamp_ms();
         let last = state.delta_sent_at.get(client_run_id).copied().unwrap_or(0);
         if now - last < DELTA_THROTTLE_MS {
+            info!("[CHAT-EVENT] emit_chat_delta: throttled ({}ms < {}ms)", now - last, DELTA_THROTTLE_MS);
             return;
         }
 
@@ -83,7 +86,7 @@ impl ChatEventHandler {
             state: ChatEventState::Delta,
             message: Some(AssistantMessage {
                 role: "assistant".to_string(),
-                content: vec![ContentBlock::Text { text: merged_raw }],
+                content: vec![ContentBlock::Text { text: merged_raw.clone() }],
                 timestamp: now,
                 stop_reason: None,
                 api: None,
@@ -98,6 +101,12 @@ impl ChatEventHandler {
         })
         .unwrap_or_default();
 
+        info!(
+            "[CHAT-EVENT] Broadcasting delta for run_id={}, seq={}, text_len={}",
+            client_run_id,
+            seq,
+            merged_raw.len()
+        );
         broadcast_fn(
             "chat".to_string(),
             payload,
@@ -113,7 +122,7 @@ impl ChatEventHandler {
         client_run_id: &str,
         _source_run_id: &str,
         seq: u64,
-        broadcast_fn: &dyn Fn(String, serde_json::Value, Option<BroadcastOptions>),
+        broadcast_fn: &(dyn Fn(String, serde_json::Value, Option<BroadcastOptions>) + Send + Sync),
     ) {
         let mut state = self.run_state.lock().await;
 
@@ -184,7 +193,7 @@ impl ChatEventHandler {
         error: Option<&str>,
         stop_reason: Option<&str>,
         _error_kind: Option<&str>,
-        broadcast_fn: &dyn Fn(String, serde_json::Value, Option<BroadcastOptions>),
+        broadcast_fn: &(dyn Fn(String, serde_json::Value, Option<BroadcastOptions>) + Send + Sync),
     ) {
         let mut state = self.run_state.lock().await;
 
@@ -205,12 +214,18 @@ impl ChatEventHandler {
             (ChatEventState::Error, error.map(|e| e.to_string()))
         };
 
+        let has_message = !text.is_empty() && error_message.is_none();
+        info!(
+            "[CHAT-EVENT] emit_chat_final: run_id={} job_state={} text_len={} has_message={}",
+            client_run_id, job_state, text.len(), has_message
+        );
+
         let payload = serde_json::to_value(&ChatEvent {
             run_id: client_run_id.to_string(),
             session_key: session_key.to_string(),
             seq,
             state: event_state,
-            message: if !text.is_empty() && error_message.is_none() {
+            message: if has_message {
                 Some(AssistantMessage {
                     role: "assistant".to_string(),
                     content: vec![ContentBlock::Text { text }],
