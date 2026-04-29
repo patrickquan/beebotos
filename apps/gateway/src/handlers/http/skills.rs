@@ -59,8 +59,8 @@ pub struct SkillInfoResponse {
     pub author: String,
     pub license: String,
     pub installed: bool,
-    pub capabilities: Vec<String>,
     pub tags: Vec<String>,
+    pub capabilities: Vec<String>,
     pub downloads: u64,
     pub rating: f32,
 }
@@ -109,9 +109,9 @@ pub async fn install_skill(
         metadata.name, metadata.version, metadata.author
     );
 
-    // Check if already installed
+    // Check if already installed (must have SKILL.md)
     let skill_dir = get_skill_install_path(&metadata.id);
-    if skill_dir.exists() {
+    if is_skill_installed(&metadata.id) {
         warn!("Skill {} is already installed at {:?}", metadata.id, skill_dir);
         return Ok(Json(InstallSkillResponse {
             success: true,
@@ -121,6 +121,10 @@ pub async fn install_skill(
             message: "Skill is already installed".to_string(),
             installed_path: skill_dir.to_string_lossy().to_string(),
         }));
+    }
+    // 清理之前失败的安装残留（空目录）
+    if skill_dir.exists() {
+        tokio::fs::remove_dir_all(&skill_dir).await.ok();
     }
 
     // Download skill content
@@ -142,16 +146,11 @@ pub async fn install_skill(
     };
 
     match download_result {
-        Ok(content_bytes) => {
-            let content = String::from_utf8(content_bytes)
-                .map_err(|e| GatewayError::Internal {
-                    message: format!("Invalid UTF-8 in skill content: {}", e),
-                    correlation_id: uuid::Uuid::new_v4().to_string(),
-                })?;
-            install_skill_content(&metadata, &content)
+        Ok(archive_bytes) => {
+            install_skill_archive(&metadata, &archive_bytes, &hub_type.to_string())
                 .await
                 .map_err(|e| GatewayError::Internal {
-                    message: format!("Failed to install skill: {}", e),
+                    message: format!("Failed to install skill archive: {}", e),
                     correlation_id: uuid::Uuid::new_v4().to_string(),
                 })?;
         }
@@ -181,10 +180,14 @@ pub async fn install_skill(
 
     // Load and register to SkillRegistry if available
     if let Some(ref registry) = state.skill_registry {
-        let mut loader = beebotos_agents::skills::SkillLoader::new();
-        loader.add_path(get_skills_base_dir());
-        match loader.load_skill(&metadata.id).await {
-            Ok(skill) => {
+        let skill_dir = get_skill_install_path(&metadata.id);
+        let source = beebotos_agents::skills::SkillSource::Managed;
+        match beebotos_agents::skills::SkillLoader::load_skill_from_dir(
+            &skill_dir, source,
+        )
+        .await
+        {
+            Ok(Some(skill)) => {
                 registry
                     .register(
                         skill,
@@ -193,6 +196,9 @@ pub async fn install_skill(
                     )
                     .await;
                 info!("Registered skill {} to registry", metadata.id);
+            }
+            Ok(None) => {
+                warn!("Skill {} installed but no valid SKILL.md found", metadata.id);
             }
             Err(e) => {
                 warn!("Failed to load skill into registry: {}", e);
@@ -268,8 +274,8 @@ pub async fn list_skills(
                 author: s.author,
                 license: s.license,
                 installed: is_skill_installed(&s.id),
-                capabilities: s.capabilities,
                 tags: s.tags,
+                capabilities: s.capabilities,
                 downloads: s.downloads,
                 rating: s.rating,
             })
@@ -375,9 +381,118 @@ pub fn get_skills_base_dir() -> std::path::PathBuf {
         .unwrap_or_else(|_| std::path::PathBuf::from("data/skills"))
 }
 
-/// Check if skill is installed
+/// Check if skill is installed (must have SKILL.md)
 fn is_skill_installed(skill_id: &str) -> bool {
-    get_skill_install_path(skill_id).exists()
+    let dir = get_skill_install_path(skill_id);
+    dir.exists() && dir.join("SKILL.md").exists()
+}
+
+/// Install skill archive (ZIP) to disk
+async fn install_skill_archive(
+    metadata: &SkillMetadata,
+    archive_bytes: &[u8],
+    hub_label: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let skill_dir = get_skill_install_path(&metadata.id);
+    tokio::fs::create_dir_all(&skill_dir).await?;
+
+    // 解压 ZIP
+    extract_zip(archive_bytes, &skill_dir)?;
+
+    // 验证 SKILL.md 存在
+    let skill_md_path = skill_dir.join("SKILL.md");
+    if !skill_md_path.exists() {
+        return Err("Extracted archive does not contain SKILL.md".into());
+    }
+
+    // 写入 .clawhub/origin.json
+    let clawhub_dir = skill_dir.join(".clawhub");
+    tokio::fs::create_dir_all(&clawhub_dir).await?;
+
+    let origin = serde_json::json!({
+        "hub": hub_label,
+        "id": metadata.id,
+        "name": metadata.name,
+        "version": metadata.version,
+        "author": metadata.author,
+        "installed_at": chrono::Utc::now().to_rfc3339(),
+    });
+    let origin_path = clawhub_dir.join("origin.json");
+    tokio::fs::write(
+        &origin_path,
+        serde_json::to_string_pretty(&origin)?,
+    )
+    .await?;
+
+    // 写入 .clawhub/lock.json（锁定版本）
+    let lock = serde_json::json!({
+        "version": metadata.version,
+        "locked_at": chrono::Utc::now().to_rfc3339(),
+        "hash": metadata.hash,
+    });
+    let lock_path = clawhub_dir.join("lock.json");
+    tokio::fs::write(&lock_path, serde_json::to_string_pretty(&lock)?).await?;
+
+    info!("Installed skill archive to {:?}", skill_dir);
+    Ok(())
+}
+
+/// 解压 ZIP 字节到目标目录
+fn extract_zip(
+    data: &[u8],
+    target_dir: &std::path::Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::{Cursor, Read};
+
+    let reader = Cursor::new(data);
+    let mut archive = zip::ZipArchive::new(reader)?;
+
+    // 获取目标目录的绝对路径，用于安全比较
+    // 注意：不使用 canonicalize，因为 zip::read::ZipFile::enclosed_name()
+    // 已经过滤了 ".." 路径，基础的路径遍历攻击已被防护。
+    // 在 Windows 上 canonicalize 返回 UNC 路径（\\?\...），与常规绝对路径
+    // 的 starts_with 比较会不一致。
+    let abs_target = if target_dir.is_absolute() {
+        target_dir.to_path_buf()
+    } else {
+        std::env::current_dir().unwrap_or_default().join(target_dir)
+    };
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)?;
+        let outpath = match file.enclosed_name() {
+            Some(path) => target_dir.join(path),
+            None => continue,
+        };
+
+        // 安全检查：确保解压路径在目标目录内
+        let abs_out = if outpath.is_absolute() {
+            outpath.clone()
+        } else {
+            std::env::current_dir().unwrap_or_default().join(&outpath)
+        };
+        if !abs_out.starts_with(&abs_target) {
+            return Err(format!(
+                "ZIP path traversal detected: {:?}",
+                file.name()
+            )
+            .into());
+        }
+
+        if file.name().ends_with('/') {
+            std::fs::create_dir_all(&outpath)?;
+        } else {
+            if let Some(parent) = outpath.parent() {
+                if !parent.exists() {
+                    std::fs::create_dir_all(parent)?;
+                }
+            }
+            let mut outfile = std::fs::File::create(&outpath)?;
+            std::io::copy(&mut file, &mut outfile)?;
+        }
+    }
+
+    Ok(())
 }
 
 /// Install skill metadata-only stub (no package available from hub)
@@ -388,34 +503,24 @@ async fn install_skill_metadata_only(
     let skill_dir = get_skill_install_path(&metadata.id);
     tokio::fs::create_dir_all(&skill_dir).await?;
 
-    // Write SKILL.md with YAML frontmatter
+    // Write SKILL.md with OpenClaw YAML frontmatter
     let skill_md = format!(
         "---\n\
-         id: {}\n\
          name: {}\n\
          version: {}\n\
          description: {}\n\
          author: {}\n\
          license: {}\n\
-         capabilities:\n\
-         {}\n\
          ---\n\
          \n\
          # {}\n\
          \n\
          {}\n",
-        metadata.id,
         metadata.name,
         metadata.version,
         metadata.description,
         metadata.author,
         metadata.license,
-        metadata
-            .capabilities
-            .iter()
-            .map(|c| format!("  - {}", c))
-            .collect::<Vec<_>>()
-            .join("\n"),
         metadata.name,
         metadata.description
     );
@@ -423,42 +528,21 @@ async fn install_skill_metadata_only(
     let skill_md_path = skill_dir.join("SKILL.md");
     tokio::fs::write(&skill_md_path, skill_md).await?;
 
-    // Write _meta.json
-    let meta = serde_json::json!({
-        "source_hub": hub_label,
-        "installed_at": chrono::Utc::now().to_rfc3339(),
-    });
-    let meta_path = skill_dir.join("_meta.json");
-    tokio::fs::write(&meta_path, serde_json::to_string_pretty(&meta)?).await?;
+    // Write .clawhub/origin.json
+    let clawhub_dir = skill_dir.join(".clawhub");
+    tokio::fs::create_dir_all(&clawhub_dir).await?;
 
-    info!("Installed metadata-only skill stub to {:?}", skill_dir);
-    Ok(())
-}
-
-/// Install skill content (Markdown) to disk
-async fn install_skill_content(
-    metadata: &SkillMetadata,
-    content: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let skill_dir = get_skill_install_path(&metadata.id);
-    tokio::fs::create_dir_all(&skill_dir).await?;
-
-    // Write SKILL.md
-    let skill_md_path = skill_dir.join("SKILL.md");
-    tokio::fs::write(&skill_md_path, content).await?;
-
-    // Write _meta.json
-    let meta = serde_json::json!({
+    let origin = serde_json::json!({
+        "hub": hub_label,
         "id": metadata.id,
         "name": metadata.name,
         "version": metadata.version,
-        "author": metadata.author,
         "installed_at": chrono::Utc::now().to_rfc3339(),
     });
-    let meta_path = skill_dir.join("_meta.json");
-    tokio::fs::write(&meta_path, serde_json::to_string_pretty(&meta)?).await?;
+    let origin_path = clawhub_dir.join("origin.json");
+    tokio::fs::write(&origin_path, serde_json::to_string_pretty(&origin)?).await?;
 
-    info!("Installed skill to {:?}", skill_dir);
+    info!("Installed metadata-only skill stub to {:?}", skill_dir);
     Ok(())
 }
 
@@ -491,7 +575,6 @@ async fn list_installed_skills() -> Result<Vec<SkillInfoResponse>, Box<dyn std::
                 // Try to read SKILL.md
                 let skill_md_path = path.join("SKILL.md");
                 if let Ok(content) = tokio::fs::read_to_string(&skill_md_path).await {
-                    // Parse YAML frontmatter
                     let (frontmatter, _) = parse_frontmatter(&content)?;
                     if let Ok(manifest) = serde_yaml::from_str::<serde_yaml::Value>(&frontmatter) {
                         skills.push(SkillInfoResponse {
@@ -517,8 +600,8 @@ async fn list_installed_skills() -> Result<Vec<SkillInfoResponse>, Box<dyn std::
                                 .unwrap_or("MIT")
                                 .to_string(),
                             installed: true,
-                            capabilities: yaml_string_array(&manifest["capabilities"]),
                             tags: yaml_string_array(&manifest["tags"]),
+                            capabilities: yaml_string_array(&manifest["capabilities"]),
                             downloads: 0,
                             rating: 0.0,
                         });
@@ -532,7 +615,9 @@ async fn list_installed_skills() -> Result<Vec<SkillInfoResponse>, Box<dyn std::
 }
 
 /// Get skill info from local storage
-async fn get_skill_info(skill_id: &str) -> Result<SkillInfoResponse, Box<dyn std::error::Error>> {
+async fn get_skill_info(
+    skill_id: &str,
+) -> Result<SkillInfoResponse, Box<dyn std::error::Error>> {
     let skill_dir = get_skill_install_path(skill_id);
     let skill_md_path = skill_dir.join("SKILL.md");
 
@@ -554,8 +639,8 @@ async fn get_skill_info(skill_id: &str) -> Result<SkillInfoResponse, Box<dyn std
             .to_string(),
         license: manifest["license"].as_str().unwrap_or("MIT").to_string(),
         installed: true,
-        capabilities: yaml_string_array(&manifest["capabilities"]),
         tags: yaml_string_array(&manifest["tags"]),
+        capabilities: yaml_string_array(&manifest["capabilities"]),
         downloads: 0,
         rating: 0.0,
     })

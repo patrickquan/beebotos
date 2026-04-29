@@ -70,6 +70,8 @@ sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio-native-tls", "chr
 rusqlite = { version = "0.32", features = ["bundled", "chrono", "uuid"] }
 lru = "0.12"
 dirs = "5.0"
+which = "6.0"
+zip = "2.2"
 hkdf = "0.12"
 
 # 🟢 P0 FIX: DAG scheduling dependencies

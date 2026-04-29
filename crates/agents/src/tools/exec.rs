@@ -3,6 +3,7 @@
 //! Executes a shell command and returns stdout/stderr.
 
 use std::time::Duration;
+use tracing::{debug, info, warn};
 
 use crate::llm::types::{FunctionDefinition, Tool};
 use crate::llm::ToolHandler;
@@ -61,6 +62,8 @@ impl ToolHandler for ExecTool {
         let timeout_secs = args["timeout"].as_u64().unwrap_or(30);
         let cwd = args["cwd"].as_str();
 
+        info!("exec tool: command='{}', cwd={:?}, timeout={}s", command, cwd, timeout_secs);
+
         // Use shell to execute the command so quoting and pipes work naturally
         #[cfg(target_os = "windows")]
         let mut cmd = {
@@ -115,6 +118,17 @@ impl ToolHandler for ExecTool {
                 "\n\nExit code: {}",
                 output.status.code().unwrap_or(-1)
             ));
+        }
+
+        if output.status.success() {
+            info!("exec tool: success, exit_code={}", output.status.code().unwrap_or(-1));
+            debug!("exec tool stdout (first 500 chars): {}", &stdout[..stdout.len().min(500)]);
+        } else {
+            warn!(
+                "exec tool: failed, exit_code={:?}, stderr (first 500 chars)={}",
+                output.status.code(),
+                &stderr[..stderr.len().min(500)]
+            );
         }
 
         Ok(result)

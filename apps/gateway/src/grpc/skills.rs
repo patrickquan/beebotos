@@ -46,23 +46,17 @@ impl SkillsGrpcService {
         SkillRegistryServer::new(self)
     }
 
-    /// Helper to create a SkillLoader with the configured base directory.
-    fn create_loader(&self) -> beebotos_agents::skills::SkillLoader {
-        let mut loader = beebotos_agents::skills::SkillLoader::new();
-        loader.add_path(&self.skills_base_dir);
-        loader
-    }
-
-    /// Load a skill by ID using a fresh loader.
-    async fn load_skill(
+    /// 从 skill 目录加载 Skill（OpenClaw 格式）
+    async fn load_skill_from_dir(
         &self,
         skill_id: &str,
     ) -> Result<beebotos_agents::skills::LoadedSkill, Status> {
-        let mut loader = self.create_loader();
-        loader
-            .load_skill(skill_id)
+        let skill_dir = self.skills_base_dir.join(skill_id);
+        let source = beebotos_agents::skills::SkillSource::Managed;
+        beebotos_agents::skills::SkillLoader::load_skill_from_dir(&skill_dir, source)
             .await
-            .map_err(|e| Status::internal(format!("Failed to load skill: {}", e)))
+            .map_err(|e| Status::internal(format!("Failed to load skill: {}", e)))?
+            .ok_or_else(|| Status::not_found(format!("Skill {} not found at {:?}", skill_id, skill_dir)))
     }
 }
 
@@ -113,10 +107,10 @@ fn convert_version(v: &beebotos_agents::skills::Version) -> Option<SemanticVersi
 
 fn convert_registered_skill(r: &beebotos_agents::skills::RegisteredSkill) -> Skill {
     Skill {
-        id: r.skill.id.clone(),
+        id: r.skill.name.clone(),
         name: r.skill.name.clone(),
         description: r.skill.manifest.description.clone(),
-        version: convert_version(&r.skill.version),
+        version: convert_version(&r.skill.manifest.version),
         author: r.skill.manifest.author.clone(),
         categories: vec![r.category.clone()],
         functions: vec![],
@@ -200,11 +194,9 @@ impl SkillRegistry for SkillsGrpcService {
         }
 
         // Load skill into registry
-        let mut loader = self.create_loader();
-        let loaded = loader
-            .load_skill(&skill_proto.id)
-            .await
-            .map_err(|e| Status::internal(format!("Failed to load skill: {}", e)))?;
+        let loaded = self
+            .load_skill_from_dir(&skill_proto.id)
+            .await?;
 
         let category = skill_proto.categories.first().cloned().unwrap_or_default();
         let keywords = skill_proto
@@ -298,11 +290,9 @@ impl SkillRegistry for SkillsGrpcService {
         // For now, only enable/disable is supported as an update
         if let Some(updated) = req.updated_skill {
             // Re-register with potentially new metadata
-            let mut loader = self.create_loader();
-            let loaded = loader
-                .load_skill(&req.skill_id)
-                .await
-                .map_err(|e| Status::internal(format!("Failed to reload skill: {}", e)))?;
+            let loaded = self
+                .load_skill_from_dir(&req.skill_id)
+                .await?;
 
             let category = updated
                 .categories

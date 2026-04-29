@@ -584,9 +584,6 @@ impl KernelAgentBuilder {
             agent = agent.with_wallet(wallet);
         }
 
-        // Clone skill registry before moving for tool registration
-        let skill_registry_for_tools = self.with_skill_registry.clone();
-
         if let Some(registry) = self.with_skill_registry {
             agent = agent.with_skill_registry(registry);
         }
@@ -599,7 +596,7 @@ impl KernelAgentBuilder {
         if let Some(provider) = self.with_llm_provider {
             let llm_client = Arc::new(crate::llm::LLMClient::new(provider));
             agent = agent.with_llm_client(llm_client.clone());
-            if let Err(e) = agent.register_tools(skill_registry_for_tools).await {
+            if let Err(e) = agent.register_tools().await {
                 warn!("Failed to register tools for agent {}: {}", agent_config.id, e);
             }
         }

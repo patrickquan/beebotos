@@ -8,7 +8,12 @@ timeout_seconds = 30
 max_body_size = 10485760  # 10MB
 max_connections = 1000
 keepalive_seconds = 75
-cors_origins = ["*"]
+
+[server.cors]
+allowed_origins = ["http://localhost:8090"]
+allowed_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+allowed_headers = ["Content-Type", "Authorization", "X-Requested-With"]
+allow_credentials = true
 
 [database]
 url = "sqlite:data/beebotos.db"

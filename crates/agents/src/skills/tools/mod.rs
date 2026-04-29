@@ -1,7 +1,3 @@
-//! Skills-specific tools for the tool-calling framework.
-//!
-//! These tools allow the Agent to interact with the skill registry
-//! and read skill files during multi-turn conversations.
-
-pub mod list_skills;
-pub mod read_skill;
+// 旧 Skill 工具已删除，保留模块占位以兼容导入。
+// Phase 1 重构：read_skill / list_skills 工具已移除，
+// 改为 prompt-driven 模式，由系统提示中的 <available_skills> XML 引导 LLM 使用 read_file 工具。

@@ -11,6 +11,8 @@ use std::time::Duration;
 pub struct ClawHubClient {
     http: Client,
     base_url: String,
+    /// 下载服务基础 URL（可能与 API 基础 URL 不同）
+    download_base_url: String,
     api_key: Option<String>,
 }
 
@@ -19,31 +21,37 @@ impl ClawHubClient {
     pub fn new() -> Result<Self, HubError> {
         let base_url = std::env::var("CLAWHUB_URL")
             .unwrap_or_else(|_| "https://clawhub.ai/api/v1".to_string());
-        
+
+        // 下载服务使用独立的基础 URL（Convex 托管）
+        let download_base_url = std::env::var("CLAWHUB_DOWNLOAD_URL")
+            .unwrap_or_else(|_| "https://wry-manatee-359.convex.site".to_string());
+
         let api_key = std::env::var("CLAWHUB_API_KEY").ok();
-        
+
         let http = Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| HubError::Network(e.to_string()))?;
-        
+
         Ok(Self {
             http,
             base_url,
+            download_base_url,
             api_key,
         })
     }
-    
+
     /// Create with custom configuration
     pub fn with_config(base_url: String, api_key: Option<String>) -> Result<Self, HubError> {
         let http = Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| HubError::Network(e.to_string()))?;
-        
+
         Ok(Self {
             http,
-            base_url,
+            base_url: base_url.clone(),
+            download_base_url: base_url,
             api_key,
         })
     }
@@ -52,11 +60,23 @@ impl ClawHubClient {
     fn build_request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}{}", self.base_url, path);
         let mut req = self.http.request(method, &url);
-        
+
         if let Some(ref key) = self.api_key {
             req = req.header("Authorization", format!("Bearer {}", key));
         }
-        
+
+        req.header("User-Agent", "BeeBotOS-Gateway/1.0")
+    }
+
+    /// 构建下载请求（使用独立的下载服务 URL）
+    fn build_download_request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
+        let url = format!("{}{}", self.download_base_url, path);
+        let mut req = self.http.request(method, &url);
+
+        if let Some(ref key) = self.api_key {
+            req = req.header("Authorization", format!("Bearer {}", key));
+        }
+
         req.header("User-Agent", "BeeBotOS-Gateway/1.0")
     }
     
@@ -333,25 +353,26 @@ impl ClawHubClient {
         }
     }
     
-    /// Download skill package (WASM + manifest)
+    /// Download skill package (ZIP archive)
+    ///
+    /// 使用独立的下载服务（Convex），端点为 `/api/v1/download?slug={id}`
     pub async fn download_skill(
         &self,
         id: &str,
         version: Option<&str>,
     ) -> Result<Vec<u8>, HubError> {
-        let path = if let Some(ver) = version {
-            format!("/skills/{}/download?version={}", id, ver)
-        } else {
-            format!("/skills/{}/download", id)
-        };
-        
-        let req = self.build_request(reqwest::Method::GET, &path);
-        
+        let mut path = format!("/api/v1/download?slug={}", id);
+        if let Some(ver) = version {
+            path.push_str(&format!("&version={}", ver));
+        }
+
+        let req = self.build_download_request(reqwest::Method::GET, &path);
+
         let resp = req
             .send()
             .await
             .map_err(|e| HubError::Network(e.to_string()))?;
-        
+
         match resp.status() {
             reqwest::StatusCode::OK => {
                 let bytes = resp
