@@ -195,6 +195,10 @@ function Start-Service($name) {
         if (Test-Path $realFavicon) {
             Copy-Item $realFavicon (Join-Path $tempStaticDir "favicon.svg")
         }
+        $markedJs = Join-Path $ProjectRoot "apps\web\public\marked.min.js"
+        if (Test-Path $markedJs) {
+            Copy-Item $markedJs (Join-Path $tempStaticDir "marked.min.js")
+        }
         $startArgs["ArgumentList"] = "`"--static-path`" `"$tempStaticDir`" `"--gateway-url`" http://localhost:8000"
         Print-Info "Static path: $tempStaticDir"
         Print-Info "Gateway URL: http://localhost:8000"
@@ -286,6 +290,10 @@ function Pack-Release($target = "all") {
         $realFavicon = Join-Path $ProjectRoot "apps\web\public\favicon.svg"
         if (Test-Path $realFavicon) {
             Copy-Item $realFavicon (Join-Path $outDir "favicon.svg")
+        }
+        $markedJs = Join-Path $ProjectRoot "apps\web\public\marked.min.js"
+        if (Test-Path $markedJs) {
+            Copy-Item $markedJs (Join-Path $outDir "marked.min.js")
         }
         # Copy real CSS from style/ directory (root CSS files are redirects)
         $styleDir = Join-Path $ProjectRoot "apps\web\style"

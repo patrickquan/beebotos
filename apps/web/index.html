@@ -9,17 +9,99 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-    <link rel="stylesheet" href="/style.css">
-    <link rel="stylesheet" href="/components.css">
+    <link rel="stylesheet" href="/style.css?v=5">
+    <link rel="stylesheet" href="/components.css?v=5">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="/marked.min.js"></script>
 </head>
 <body>
     <div id="root"></div>
     <script type="module">
         import init from '/pkg/beebotos_web.js?v=4';
         init();
+    </script>
+    <script>
+        // 配置 marked.js：自定义代码块渲染
+        if (typeof marked !== 'undefined') {
+            const renderer = new marked.Renderer();
+            renderer.code = function(code, language) {
+                const lang = language || 'text';
+                const escapedLang = lang.replace(/[<>&"']/g, function(c) {
+                    return { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c];
+                });
+                const escapedCode = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                return '<div class="code-block-wrapper">' +
+                    '<div class="code-block-header">' +
+                        '<span class="code-lang">' + escapedLang + '</span>' +
+                        '<button class="code-copy-btn" onclick="copyCodeBlock(this)" title="复制">' +
+                            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+                                '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>' +
+                                '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>' +
+                            '</svg>' +
+                            '<span>复制</span>' +
+                        '</button>' +
+                    '</div>' +
+                    '<pre><code class="language-' + escapedLang + '">' + escapedCode + '</code></pre>' +
+                '</div>';
+            };
+            marked.setOptions({
+                renderer: renderer,
+                breaks: true,
+                gfm: true
+            });
+        }
+
+        // Markdown 解析入口（Rust 调用）
+        window.parseMarkdown = function(content) {
+            if (typeof marked === 'undefined') {
+                console.error('marked.js not loaded');
+                return '<p>' + content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</p>';
+            }
+            return marked.parse(content);
+        };
+
+        // 复制代码块功能
+        window.copyCodeBlock = function(btn) {
+            const wrapper = btn.closest('.code-block-wrapper');
+            const codeElement = wrapper.querySelector('pre code');
+            const codeText = codeElement.textContent || codeElement.innerText;
+
+            navigator.clipboard.writeText(codeText).then(function() {
+                const span = btn.querySelector('span');
+                const originalText = span ? span.textContent : '复制';
+                if (span) span.textContent = '已复制';
+                btn.classList.add('copied');
+
+                setTimeout(function() {
+                    if (span) span.textContent = originalText;
+                    btn.classList.remove('copied');
+                }, 2000);
+            }).catch(function(err) {
+                console.error('复制失败:', err);
+                const textarea = document.createElement('textarea');
+                textarea.value = codeText;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                document.body.appendChild(textarea);
+                textarea.select();
+                try {
+                    document.execCommand('copy');
+                    const span = btn.querySelector('span');
+                    const originalText = span ? span.textContent : '复制';
+                    if (span) span.textContent = '已复制';
+                    btn.classList.add('copied');
+                    setTimeout(function() {
+                        if (span) span.textContent = originalText;
+                        btn.classList.remove('copied');
+                    }, 2000);
+                } catch (e) {
+                    console.error('复制失败:', e);
+                }
+                document.body.removeChild(textarea);
+            });
+        };
     </script>
 </body>
 </html>

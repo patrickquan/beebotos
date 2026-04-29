@@ -153,6 +153,9 @@ start_service() {
         if [[ -f "${PROJECT_ROOT}/apps/web/public/favicon.svg" ]]; then
             cp -L "${PROJECT_ROOT}/apps/web/public/favicon.svg" "$temp_static_dir/favicon.svg"
         fi
+        if [[ -f "${PROJECT_ROOT}/apps/web/public/marked.min.js" ]]; then
+            cp -L "${PROJECT_ROOT}/apps/web/public/marked.min.js" "$temp_static_dir/marked.min.js"
+        fi
         print_info "Static path: $temp_static_dir"
         print_info "Gateway URL: http://localhost:8000"
         nohup "$binary" --static-path "$temp_static_dir" --gateway-url http://localhost:8000 > "${PID_DIR}/${svc}.log" 2>&1 &

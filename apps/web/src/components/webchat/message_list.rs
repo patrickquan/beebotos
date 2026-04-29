@@ -13,31 +13,69 @@ use wasm_bindgen::JsCast;
 use crate::state::StreamSegment;
 use crate::webchat::{ChatMessage, MessageRole};
 
-/// 简易 Markdown 转 HTML（仅处理常用语法）
+/// 使用 marked.js 解析 Markdown（通过 JS 调用）
 fn markdown_to_html(md: &str) -> String {
+    let window = web_sys::window().unwrap();
+    let parse_md = match js_sys::Reflect::get(&window, &"parseMarkdown".into()) {
+        Ok(v) if !v.is_undefined() && !v.is_null() => v,
+        _ => {
+            // fallback：marked.js 未加载时使用简易解析
+            return simple_markdown_to_html(md);
+        }
+    };
+    let parse_fn: js_sys::Function = match parse_md.dyn_into() {
+        Ok(f) => f,
+        Err(_) => return simple_markdown_to_html(md),
+    };
+    match parse_fn.call1(&wasm_bindgen::JsValue::NULL, &md.into()) {
+        Ok(result) => result.as_string().unwrap_or_else(|| html_escape(md)),
+        Err(_) => simple_markdown_to_html(md),
+    }
+}
+
+/// 检测内容是否可以安全地进行 markdown 渲染
+/// 主要风险：未闭合的代码块（```）会导致后续内容全被吞进代码块
+fn can_safely_render_markdown(content: &str) -> bool {
+    let mut code_fence_count = 0;
+    for line in content.lines() {
+        if line.trim_start().starts_with("```") {
+            code_fence_count += 1;
+        }
+    }
+    // 代码块标记必须成对出现
+    code_fence_count % 2 == 0
+}
+
+/// 简易 Markdown 转 HTML（fallback，marked.js 不可用时）
+fn simple_markdown_to_html(md: &str) -> String {
     let mut html = String::new();
     let mut in_code_block = false;
-    #[allow(unused_assignments)]
     let mut code_lang = String::new();
+    let mut code_content = String::new();
 
     for line in md.lines() {
         if line.starts_with("```") {
             if in_code_block {
-                html.push_str("</code></pre>\n");
+                let escaped_content = html_escape(&code_content);
+                let lang_display = if code_lang.is_empty() { "text".to_string() } else { code_lang.clone() };
+                html.push_str(&format!(
+                    r#"<div class="code-block-wrapper"><div class="code-block-header"><span class="code-lang">{}</span><button class="code-copy-btn" onclick="copyCodeBlock(this)" title="复制"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>复制</span></button></div><pre><code class="language-{}">{}</code></pre></div>"#,
+                    html_escape(&lang_display),
+                    html_escape(&code_lang),
+                    escaped_content
+                ));
                 in_code_block = false;
+                code_content.clear();
+                code_lang.clear();
             } else {
                 code_lang = line.trim_start_matches('`').trim().to_string();
-                html.push_str(&format!(
-                    "<pre><code class=\"language-{}\">",
-                    html_escape(&code_lang)
-                ));
                 in_code_block = true;
             }
             continue;
         }
         if in_code_block {
-            html.push_str(&html_escape(line));
-            html.push('\n');
+            code_content.push_str(line);
+            code_content.push('\n');
             continue;
         }
 
@@ -56,7 +94,14 @@ fn markdown_to_html(md: &str) -> String {
         }
     }
     if in_code_block {
-        html.push_str("</code></pre>\n");
+        let escaped_content = html_escape(&code_content);
+        let lang_display = if code_lang.is_empty() { "text".to_string() } else { code_lang.clone() };
+        html.push_str(&format!(
+            r#"<div class="code-block-wrapper"><div class="code-block-header"><span class="code-lang">{}</span><button class="code-copy-btn" onclick="copyCodeBlock(this)" title="复制"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>复制</span></button></div><pre><code class="language-{}">{}</code></pre></div>"#,
+            html_escape(&lang_display),
+            html_escape(&code_lang),
+            escaped_content
+        ));
     }
     html
 }
@@ -397,9 +442,15 @@ pub fn MessageList(
                                  </div>",
                             );
                         } else {
+                            // 智能渲染：无未闭合代码块时渲染 markdown，否则纯文本
+                            let display = if can_safely_render_markdown(&content) {
+                                markdown_to_html(&content)
+                            } else {
+                                html_escape(&content)
+                            };
                             text_el.set_inner_html(
                                 &format!("{}<span class=\"streaming-cursor\">▋</span>",
-                                    html_escape(&content)),
+                                    display),
                             );
                         }
                         // 仅在用户未主动上滚时自动跟随
