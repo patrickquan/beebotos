@@ -47,7 +47,7 @@ pub use notification::{
 };
 pub use webchat::{
     provide_webchat_state, use_chat_ui_state, use_session_ui_state, use_webchat_state, ChatUIState,
-    SessionUIState, WebchatState,
+    SessionUIState, StreamSegment, WebchatState, WebchatWsHandler,
 };
 
 // 向后兼容 - 重新导出旧函数名

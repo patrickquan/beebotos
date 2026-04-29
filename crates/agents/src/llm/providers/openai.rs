@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use tokio::sync::mpsc;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, warn};
 
 use crate::llm::http_client::{LLMHttpClient, OpenAIRequestBuilder, ProviderConfig};
 use crate::llm::traits::*;
@@ -173,8 +173,11 @@ impl LLMProvider for OpenAIProvider {
 
     async fn complete(&self, request: LLMRequest) -> LLMResult<LLMResponse> {
         let start = std::time::Instant::now();
-        info!("[LLM-TRACE] OpenAIProvider::complete started, model={}, messages={}",
-            request.config.model, request.messages.len());
+        info!(
+            "[LLM-TRACE] OpenAIProvider::complete started, model={}, messages={}",
+            request.config.model,
+            request.messages.len()
+        );
 
         let body = self.request_builder.build_body(request);
         let body_size = body.to_string().len();
@@ -185,15 +188,21 @@ impl LLMProvider for OpenAIProvider {
             .execute_with_retry(&self.config, "/chat/completions", body)
             .await?;
 
-        info!("[LLM-TRACE] HTTP response received after {:?}, status={}",
-            start.elapsed(), response.status());
+        info!(
+            "[LLM-TRACE] HTTP response received after {:?}, status={}",
+            start.elapsed(),
+            response.status()
+        );
 
         let llm_response: LLMResponse = response
             .json()
             .await
             .map_err(|e| LLMError::Serialization(e.to_string()))?;
 
-        info!("[LLM-TRACE] OpenAIProvider::complete finished in {:?}", start.elapsed());
+        info!(
+            "[LLM-TRACE] OpenAIProvider::complete finished in {:?}",
+            start.elapsed()
+        );
 
         debug!(
             "Received response from OpenAI: {} tokens used",
@@ -244,7 +253,7 @@ impl LLMProvider for OpenAIProvider {
                                         }
                                     }
                                     Err(e) => {
-                                        trace!("Failed to parse chunk: {}", e);
+                                        warn!("[SSE-PARSE] Failed to parse chunk: {} | data: {}", e, data);
                                     }
                                 }
                             }

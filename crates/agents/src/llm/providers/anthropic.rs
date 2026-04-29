@@ -302,10 +302,11 @@ impl LLMProvider for AnthropicProvider {
             .filter_map(|c| {
                 if let Some(name) = &c.name {
                     Some(ToolCall {
-                        id: format!("call_{}", uuid::Uuid::new_v4()),
-                        r#type: "function".to_string(),
+                        id: Some(format!("call_{}", uuid::Uuid::new_v4())),
+                        index: None,
+                        r#type: Some("function".to_string()),
                         function: FunctionCall {
-                            name: name.clone(),
+                            name: Some(name.clone()),
                             arguments: c.input.as_ref()?.to_string(),
                         },
                     })

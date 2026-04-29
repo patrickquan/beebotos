@@ -85,7 +85,6 @@ impl AuthState {
         })
     }
 
-
     /// Set authenticated user with tokens
     ///
     /// # Security
@@ -330,5 +329,4 @@ mod tests {
         assert!(!auth.is_authenticated());
         assert!(auth.get_token().is_none());
     }
-
 }

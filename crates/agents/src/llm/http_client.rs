@@ -103,7 +103,11 @@ impl LLMHttpClient {
                 })?;
 
             let status = response.status();
-            info!("[LLM-TRACE] HTTP response status {} after {:?}", status, send_start.elapsed());
+            info!(
+                "[LLM-TRACE] HTTP response status {} after {:?}",
+                status,
+                send_start.elapsed()
+            );
 
             if status.is_success() {
                 return Ok(response);
@@ -324,14 +328,12 @@ impl OpenAIRequestBuilder {
                     obj["tool_call_id"] = json!(tool_call_id);
                 }
 
-                // 🆕 FIX: Kimi/DeepSeek require reasoning_content on assistant messages
-                // with tool_calls. If missing, add empty string to prevent API errors.
+                // 🆕 FIX: Kimi API requires reasoning_content to be present and non-empty
+                // on assistant messages with tool_calls when thinking is enabled.
+                // Provide a placeholder if none exists to prevent 400 errors.
                 if m.role == crate::llm::types::Role::Assistant && has_tool_calls {
-                    if let Some(reasoning_content) = m.reasoning_content {
-                        obj["reasoning_content"] = json!(reasoning_content);
-                    } else {
-                        obj["reasoning_content"] = json!("");
-                    }
+                    let rc = m.reasoning_content.as_deref().unwrap_or("");
+                    obj["reasoning_content"] = json!(if rc.is_empty() { " " } else { rc });
                 }
 
                 obj
@@ -391,19 +393,34 @@ impl OpenAIRequestBuilder {
             body[key] = value;
         }
 
+        // 🆕 FIX: Disable Kimi/Moonshot thinking mode to prevent hidden
+        // reasoning_content from consuming all token budget without emitting
+        // visible assistant text. OpenClaw reference: moonshot.live.test.ts
+        if model.starts_with("kimi") {
+            body["thinking"] = json!({ "type": "disabled" });
+        }
+
         // 🆕 DEBUG: Log request body when tools are present
         if body.get("tools").is_some() {
             let body_str = body.to_string();
             // Safe UTF-8 truncation: find last char boundary before 2000 bytes
             let preview = if body_str.len() > 2000 {
-                match body_str.char_indices().take_while(|(i, _)| *i <= 2000).last() {
+                match body_str
+                    .char_indices()
+                    .take_while(|(i, _)| *i <= 2000)
+                    .last()
+                {
                     Some((idx, _)) => &body_str[..idx],
                     None => &body_str,
                 }
             } else {
                 &body_str
             };
-            info!("[LLM-TRACE] Full request body: {} bytes, JSON: {}", body_str.len(), preview);
+            info!(
+                "[LLM-TRACE] Full request body: {} bytes, JSON: {}",
+                body_str.len(),
+                preview
+            );
         }
 
         body

@@ -28,7 +28,8 @@ impl ToolHandler for ReadSkillTool {
             function: FunctionDefinition {
                 name: "read_skill".to_string(),
                 description: Some(
-                    "读取指定技能的 SKILL.md 文件内容。Agent 在确定某个技能适用于当前任务后，应调用此工具读取完整指令。"
+                    "读取指定技能的 SKILL.md 文件内容。Agent \
+                     在确定某个技能适用于当前任务后，应调用此工具读取完整指令。"
                         .to_string(),
                 ),
                 parameters: serde_json::json!({
@@ -46,8 +47,8 @@ impl ToolHandler for ReadSkillTool {
     }
 
     async fn execute(&self, arguments: &str) -> Result<String, String> {
-        let args: serde_json::Value = serde_json::from_str(arguments)
-            .map_err(|e| format!("Invalid arguments: {}", e))?;
+        let args: serde_json::Value =
+            serde_json::from_str(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
 
         let skill_id = args["skill_id"].as_str().ok_or("Missing skill_id")?;
 

@@ -8,15 +8,14 @@ use gloo_storage::{LocalStorage, Storage};
 use leptos::prelude::*;
 use leptos::view;
 use leptos_meta::Title;
-use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
 use crate::api::{create_client, create_webchat_service};
 use crate::components::webchat::{
     MessageInput, MessageList, SessionList, SidePanel, UsagePanelComponent,
 };
-use crate::state::{use_auth_state, use_chat_ui_state, use_webchat_state};
-use crate::utils::get_user_id;
+use crate::gateway::websocket::{WebSocketClient, WsConnectionStatus};
+use crate::state::{use_auth_state, use_chat_ui_state, use_webchat_state, WebchatWsHandler};
 use crate::webchat::{ChatMessage, MessageRole};
 
 /// 获取或创建持久化的会话 ID（仅作本地缓存，后端为准）
@@ -84,10 +83,11 @@ pub fn WebchatPage() -> impl IntoView {
                                         )
                                         .into(),
                                     );
-                                    chat_state.current_messages.set(msgs.clone());
-                                    chat_state.message_cache.update(|cache| {
-                                        cache.insert(id.clone(), msgs);
-                                    });
+                                    *chat_state.message_data.lock().unwrap() = msgs.clone();
+                                    chat_state.message_version.update(|v| *v += 1);
+                                    let mut cache = chat_state.message_cache.get_untracked();
+                                    cache.insert(id.clone(), msgs);
+                                    chat_state.message_cache.set(cache);
                                 }
                                 Err(e) => {
                                     let _ = web_sys::console::error_1(
@@ -111,10 +111,11 @@ pub fn WebchatPage() -> impl IntoView {
                                     )
                                     .into(),
                                 );
-                                chat_state.current_messages.set(msgs.clone());
-                                chat_state.message_cache.update(|cache| {
-                                    cache.insert(id.clone(), msgs);
-                                });
+                                *chat_state.message_data.lock().unwrap() = msgs.clone();
+                                chat_state.message_version.update(|v| *v += 1);
+                                let mut cache = chat_state.message_cache.get_untracked();
+                                cache.insert(id.clone(), msgs);
+                                chat_state.message_cache.set(cache);
                             }
                             Err(e) => {
                                 let _ = web_sys::console::error_1(
@@ -129,7 +130,9 @@ pub fn WebchatPage() -> impl IntoView {
                         match service.create_session("New Chat").await {
                             Ok(session) => {
                                 let id = session.id.clone();
-                                chat_state.sessions.update(|s| s.push(session));
+                                let mut sessions = chat_state.sessions.get_untracked();
+                                sessions.push(session);
+                                chat_state.sessions.set(sessions);
                                 chat_state.current_session_id.set(Some(id.clone()));
                                 store_session_id(&id);
                             }
@@ -146,17 +149,19 @@ pub fn WebchatPage() -> impl IntoView {
         });
     });
 
-    // WebSocket 连接：订阅 webchat 频道接收 Agent 回复
-    let chat_state_for_effect = chat_state.clone();
+    // WebSocket 连接：使用 OpenClaw 风格协议
+    let chat_state_for_ws = chat_state.clone();
     let auth_state_for_ws = auth_state.clone();
-    Effect::new(move |_| {
-        let window = web_sys::window()?;
+
+    // 创建 WebSocket 客户端
+    let ws_client = if let Some(window) = web_sys::window() {
         let location = window.location();
-        let protocol = location.protocol().ok()?;
-        let hostname = location.hostname().ok()?;
-        let port = location.port().ok().unwrap_or_default();
+        let protocol = location.protocol().unwrap_or_else(|_| "http:".to_string());
+        let hostname = location
+            .hostname()
+            .unwrap_or_else(|_| "localhost".to_string());
+        let port = location.port().unwrap_or_default();
         let ws_protocol = if protocol == "https:" { "wss" } else { "ws" };
-        // Web 服务器(8090)不代理 WebSocket，需要直连 Gateway(8000)
         let ws_host = if port == "8090" {
             format!("{}:8000", hostname)
         } else if port.is_empty() {
@@ -166,78 +171,86 @@ pub fn WebchatPage() -> impl IntoView {
         };
         let ws_url = format!("{}://{}/ws", ws_protocol, ws_host);
 
-        let ws = web_sys::WebSocket::new(&ws_url).ok()?;
-        ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
+        let ws = WebSocketClient::new(&ws_url);
 
-        let chat_state_clone = chat_state_for_effect.clone();
-        let onmessage = Closure::wrap(Box::new(move |e: web_sys::MessageEvent| {
-            if let Ok(text) = e.data().dyn_into::<js_sys::JsString>() {
-                let text_str = text.as_string().unwrap_or_default();
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text_str) {
-                    if json.get("type").and_then(|v| v.as_str()) == Some("chat_message") {
-                        if let Some(msg_json) = json.get("message") {
-                            if let Ok(message) =
-                                serde_json::from_value::<ChatMessage>(msg_json.clone())
-                            {
-                                chat_state_clone.add_message(message);
-                                chat_state_clone.is_sending.set(false);
-                            }
-                        }
-                    }
+        // 设置事件处理器
+        let handler = WebchatWsHandler::new(chat_state_for_ws.clone());
+        ws.set_handler(Box::new(handler));
+
+        // 设置 token
+        if let Some(token) = auth_state_for_ws.get_token() {
+            ws.set_token(token);
+        }
+
+        // 连接
+        if let Err(e) = ws.connect() {
+            web_sys::console::error_1(&format!("[webchat] WebSocket connect failed: {}", e).into());
+        } else {
+            web_sys::console::log_1(
+                &format!("[webchat] WebSocket connecting to {}", ws_url).into(),
+            );
+        }
+
+        Some(ws)
+    } else {
+        None
+    };
+
+    // WebSocket 订阅：当连接成功且选中会话变化时订阅
+    let ws_client_for_sub = ws_client.clone();
+    Effect::new(move |_| {
+        let status = chat_state.ws_status.get();
+        let session_id = chat_state.current_session_id.get();
+
+        if status == WsConnectionStatus::Connected {
+            if let (Some(ws), Some(session_id)) = (ws_client_for_sub.as_ref(), session_id) {
+                // 使用 session_id 作为 session_key 订阅
+                let session_key = format!("user:{}", session_id);
+                if let Err(e) = ws.subscribe(&session_key) {
+                    web_sys::console::warn_1(&format!("[webchat] subscribe failed: {}", e).into());
+                } else {
+                    web_sys::console::log_1(
+                        &format!("[webchat] subscribed to {}", session_key).into(),
+                    );
                 }
             }
-        }) as Box<dyn FnMut(_)>);
-        ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
-        onmessage.forget();
+        }
+    });
 
-        let ws_for_open = ws.clone();
-        let user_id = auth_state_for_ws
-            .user
-            .get()
-            .as_ref()
-            .map(|u| u.id.clone())
-            .unwrap_or_else(get_user_id);
-        let onopen = Closure::wrap(Box::new(move |_e: web_sys::Event| {
-            let subscribe = serde_json::json!({
-                "type": "subscribe",
-                "channel": "webchat",
-                "user_id": user_id
-            });
-            let _ = ws_for_open.send_with_str(&subscribe.to_string());
-        }) as Box<dyn FnMut(_)>);
-        ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
-        onopen.forget();
+    // 提前 clone auth_state，因为 Effect 会 move 它
+    let auth_state_for_send = auth_state.clone();
+    let auth_state_for_select = auth_state.clone();
+    let auth_state_for_new = auth_state.clone();
 
-        let chat_state_err = chat_state_for_effect.clone();
-        let onerror = Closure::wrap(Box::new(move |_e: web_sys::Event| {
-            chat_state_err.set_error(Some("WebSocket connection error".to_string()));
-        }) as Box<dyn FnMut(_)>);
-        ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
-        onerror.forget();
-
-        let onclose = Closure::wrap(Box::new(move |_e: web_sys::Event| {
-            // 连接关闭，可选：自动重连逻辑
-        }) as Box<dyn FnMut(_)>);
-        ws.set_onclose(Some(onclose.as_ref().unchecked_ref()));
-        onclose.forget();
-
-        Some(())
+    // 监听 token 变化并更新 WebSocket token
+    let ws_client_for_token = ws_client.clone();
+    Effect::new(move |_| {
+        if let Some(token) = auth_state.get_token() {
+            if let Some(ws) = ws_client_for_token.as_ref() {
+                ws.set_token(token);
+            }
+        }
     });
 
     // 发送消息处理
     let chat_state_for_send = chat_state.clone();
-    let auth_state_for_send = auth_state.clone();
     let handle_send = move |content: String| {
-        if chat_state_for_send.is_sending.get() {
+        let _ = web_sys::console::log_1(&format!("[handle_send] called with content='{}'", content).into());
+        if chat_state_for_send.is_sending.get_untracked() {
+            let _ = web_sys::console::warn_1(&"[handle_send] is_sending=true, returning".into());
+            chat_state_for_send.set_error(Some("正在等待上一条消息回复，请稍候...".to_string()));
             return;
         }
-        let session_id = chat_state_for_send.current_session_id.get();
+        let session_id = chat_state_for_send.current_session_id.get_untracked();
+        let _ = web_sys::console::log_1(&format!("[handle_send] is_sending=false, session_id={:?}", session_id).into());
         if session_id.is_none() {
+            let _ = web_sys::console::warn_1(&"[handle_send] session_id is None, returning".into());
+            chat_state_for_send.set_error(Some("请先选择或创建一个会话".to_string()));
             return;
         }
         let session_id = session_id.unwrap();
 
-        // 本地添加用户消息
+        // 本地添加用户消息（乐观更新，仿 OpenClaw）
         let user_message = ChatMessage {
             id: uuid::Uuid::new_v4().to_string(),
             role: MessageRole::User,
@@ -251,6 +264,29 @@ pub fn WebchatPage() -> impl IntoView {
         chat_state_for_send.is_sending.set(true);
         chat_state_for_send.set_error(None);
 
+        // 立即在 DOM 中显示"思考中"提示（不经过 message_data，避免污染消息列表）
+        if let Some(container) = web_sys::window()
+            .and_then(|w| w.document())
+            .and_then(|d| d.query_selector("#messages-container").ok().flatten())
+        {
+            let thinking_html = r#"<div class="message assistant" id="thinking-message">
+                <div class="message-avatar">🤖</div>
+                <div class="message-content-wrapper">
+                    <div class="message-content">
+                        <div class="reading-indicator">
+                            <div class="reading-indicator__dots"><span></span><span></span><span></span></div>
+                            <span class="reading-indicator__label">正在思考，请稍候...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>"#;
+            container.insert_adjacent_html("beforeend", thinking_html).unwrap();
+            // 滚动到底部
+            if let Some(el) = container.dyn_ref::<web_sys::HtmlElement>() {
+                el.set_scroll_top(el.scroll_height());
+            }
+        }
+
         // 异步发送到后端
         let chat_state_send = chat_state_for_send.clone();
         let auth_state_send = auth_state_for_send.clone();
@@ -260,7 +296,7 @@ pub fn WebchatPage() -> impl IntoView {
             let service = create_webchat_service(client);
             let user_id = auth_state_send
                 .user
-                .get()
+                .get_untracked()
                 .as_ref()
                 .map(|u| u.id.clone())
                 .unwrap_or_default();
@@ -271,7 +307,7 @@ pub fn WebchatPage() -> impl IntoView {
                     let chat_state_send = chat_state_send.clone();
                     wasm_bindgen_futures::spawn_local(async move {
                         gloo_timers::future::TimeoutFuture::new(30_000).await;
-                        if chat_state_send.is_sending.get() {
+                        if chat_state_send.is_sending.get_untracked() {
                             chat_state_send.is_sending.set(false);
                         }
                     });
@@ -284,27 +320,29 @@ pub fn WebchatPage() -> impl IntoView {
         });
     };
     let on_submit: Box<dyn Fn(String)> = Box::new(handle_send);
-    let on_submit = on_submit as Box<dyn Fn(String)>;
 
     // 切换会话
     let chat_state_select = chat_state.clone();
-    let auth_state_select = auth_state.clone();
     let on_select_session: std::sync::Arc<dyn Fn(String) + Send + Sync> = std::sync::Arc::new({
         let chat_state = chat_state_select.clone();
         move |id: String| {
             let chat_state = chat_state.clone();
-            let auth_state = auth_state_select.clone();
+            let auth_state = auth_state_for_select.clone();
             store_session_id(&id);
             chat_state.current_session_id.set(Some(id.clone()));
 
-            // Check cache first
+            // Check cache first (使用 get_untracked 避免 Owner 依赖)
             let cached = chat_state
                 .message_cache
-                .with(|cache| cache.get(&id).cloned());
+                .get_untracked()
+                .get(&id)
+                .cloned();
             if let Some(msgs) = cached {
-                chat_state.current_messages.set(msgs);
+                *chat_state.message_data.lock().unwrap() = msgs;
+                chat_state.message_version.update(|v| *v += 1);
             } else {
-                chat_state.current_messages.set(Vec::new());
+                chat_state.message_data.lock().unwrap().clear();
+                chat_state.message_version.update(|v| *v += 1);
                 wasm_bindgen_futures::spawn_local(async move {
                     let client = create_client();
                     client.set_auth_token(auth_state.get_token());
@@ -319,10 +357,11 @@ pub fn WebchatPage() -> impl IntoView {
                                 )
                                 .into(),
                             );
-                            chat_state.current_messages.set(msgs.clone());
-                            chat_state.message_cache.update(|cache| {
-                                cache.insert(id.clone(), msgs);
-                            });
+                            *chat_state.message_data.lock().unwrap() = msgs.clone();
+                            chat_state.message_version.update(|v| *v += 1);
+                            let mut cache = chat_state.message_cache.get_untracked();
+                            cache.insert(id.clone(), msgs);
+                            chat_state.message_cache.set(cache);
                         }
                         Err(e) => {
                             let _ = web_sys::console::error_1(
@@ -339,12 +378,11 @@ pub fn WebchatPage() -> impl IntoView {
 
     // 新建会话
     let chat_state_new = chat_state.clone();
-    let auth_state_new = auth_state.clone();
     let on_new_session: std::sync::Arc<dyn Fn() + Send + Sync> = std::sync::Arc::new({
         let chat_state = chat_state_new.clone();
         move || {
             let chat_state = chat_state.clone();
-            let auth_state = auth_state_new.clone();
+            let auth_state = auth_state_for_new.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let client = create_client();
                 client.set_auth_token(auth_state.get_token());
@@ -352,9 +390,12 @@ pub fn WebchatPage() -> impl IntoView {
                 match service.create_session("New Chat").await {
                     Ok(session) => {
                         let id = session.id.clone();
-                        chat_state.sessions.update(|s| s.push(session));
+                        let mut sessions = chat_state.sessions.get_untracked();
+                        sessions.push(session);
+                        chat_state.sessions.set(sessions);
                         chat_state.current_session_id.set(Some(id.clone()));
-                        chat_state.current_messages.set(Vec::new());
+                        chat_state.message_data.lock().unwrap().clear();
+                        chat_state.message_version.update(|v| *v += 1);
                         store_session_id(&id);
                     }
                     Err(e) => {
@@ -387,6 +428,31 @@ pub fn WebchatPage() -> impl IntoView {
     let ui_state_side_toggle = ui_state.clone();
     let _ui_state_header = ui_state.clone();
 
+    // 自动滚动管理：仅管理"新消息"按钮状态，不强制滚动
+    // 实际滚动逻辑由 MessageList 的 polling 回调统一处理
+    let ui_state_scroll = ui_state.clone();
+    Effect::new(move |_| {
+        if !ui_state_scroll.has_auto_scrolled.get() {
+            // 首次加载强制滚动到底部
+            let document = web_sys::window().and_then(|w| w.document());
+            let container = document
+                .and_then(|d| d.query_selector("#messages-container").ok().flatten())
+                .and_then(|el| el.dyn_into::<web_sys::HtmlElement>().ok());
+            if let Some(container) = container {
+                container.set_scroll_top(container.scroll_height());
+            }
+            ui_state_scroll.has_auto_scrolled.set(true);
+            return;
+        }
+
+        // 根据 user_near_bottom 状态管理"新消息"按钮
+        if ui_state_scroll.user_near_bottom.get() {
+            ui_state_scroll.new_messages_below.set(false);
+        } else {
+            ui_state_scroll.new_messages_below.set(true);
+        }
+    });
+
     view! {
         <Title text="Chat - BeeBotOS" />
         <div class="webchat-page">
@@ -403,16 +469,62 @@ pub fn WebchatPage() -> impl IntoView {
 
                 <main class="chat-main">
                     <ChatHeader title=current_title />
-                    {move || view! {
-                        <MessageList
-                            messages=chat_state.current_messages.into()
-                            is_streaming=chat_state.is_streaming.get()
-                            streaming_content=chat_state.streaming_content.get()
-                        />
+                    {
+                        let ui_state_scroll = ui_state.clone();
+                        let message_data = chat_state.message_data.clone();
+                        let message_version = chat_state.message_version;
+                        move || view! {
+                            <MessageList
+                                message_data=message_data.clone()
+                                message_version=message_version
+                                is_streaming=chat_state.is_streaming.into()
+                                stream_segments=chat_state.stream_segments.into()
+                                stream_buffer=chat_state.stream_buffer.into()
+                                on_scroll={
+                                    let ui_state = ui_state_scroll.clone();
+                                    Box::new(move |ev: web_sys::Event| {
+                                        if let Some(target) = ev.target() {
+                                            if let Ok(container) = target.dyn_into::<web_sys::HtmlElement>() {
+                                                let scroll_top = container.scroll_top() as f64;
+                                                let scroll_height = container.scroll_height() as f64;
+                                                let client_height = container.client_height() as f64;
+                                                ui_state.update_scroll_position(scroll_top, scroll_height, client_height);
+                                            }
+                                        }
+                                    }) as Box<dyn Fn(web_sys::Event)>
+                                }
+                            />
+                        }
+                    }
+                    {move || {
+                        if ui_state.new_messages_below.get() {
+                            view! {
+                                <button
+                                    class="new-messages-indicator"
+                                    on:click=move |_| {
+                                        // 滚动到最底部（实际滚动容器是 #messages-container）
+                                        let document = web_sys::window().and_then(|w| w.document());
+                                        if let Some(doc) = document {
+                                            if let Some(container) = doc.query_selector("#messages-container").ok().flatten() {
+                                                if let Some(el) = container.dyn_ref::<web_sys::HtmlElement>() {
+                                                    el.set_scroll_top(el.scroll_height());
+                                                }
+                                            }
+                                        }
+                                        ui_state.user_near_bottom.set(true);
+                                        ui_state.new_messages_below.set(false);
+                                    }
+                                >
+                                    "↓ 新消息"
+                                </button>
+                            }.into_any()
+                        } else {
+                            view! { <div /> }.into_any()
+                        }
                     }}
                     <MessageInput
                         placeholder="Type a message... (use /btw for side question)".to_string()
-                        disabled=chat_state.is_sending.get()
+                        disabled=Signal::derive(move || chat_state.is_sending.get())
                         on_submit=on_submit
                     />
                     {move || {
@@ -454,7 +566,7 @@ pub fn WebchatPage() -> impl IntoView {
                         on_new_question={
                             let chat_state = chat_state.clone();
                             Box::new(move |q: String| {
-                                let session_id = chat_state.current_session_id.get().unwrap_or_default();
+                                let session_id = chat_state.current_session_id.get_untracked().unwrap_or_default();
                                 chat_state.add_side_question(crate::webchat::SideQuestion::new(session_id, q));
                             })
                         }

@@ -80,9 +80,10 @@ pub mod security;
 pub mod session;
 pub mod skills;
 pub mod spawning;
-pub mod tools;
+pub mod stream;
 pub mod task;
 pub mod timeout;
+pub mod tools;
 pub mod types;
 
 // 🟢 P1 FIX: Service Mesh 模式 - 统一服务注册发现

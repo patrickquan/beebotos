@@ -1,6 +1,7 @@
-use crate::i18n::I18nContext;
 use leptos::prelude::*;
 use leptos::view;
+
+use crate::i18n::I18nContext;
 
 /// Error boundary component that catches errors from children
 #[component]

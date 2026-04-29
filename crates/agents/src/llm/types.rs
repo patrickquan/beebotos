@@ -133,12 +133,26 @@ impl LLMMessage {
         self
     }
 
+    /// Create an assistant message with tool calls
+    pub fn assistant_with_tool_calls(text: impl Into<String>, tool_calls: &[ToolCall]) -> Self {
+        Self {
+            role: Role::Assistant,
+            content: vec![Content::Text { text: text.into() }],
+            name: None,
+            tool_calls: Some(tool_calls.to_vec()),
+            tool_call_id: None,
+            reasoning_content: None,
+        }
+    }
+
     /// Create a tool result message
     pub fn tool(tool_call_id: impl Into<String>, content: impl Into<String>) -> Self {
         let id = tool_call_id.into();
         Self {
             role: Role::Tool,
-            content: vec![Content::Text { text: content.into() }],
+            content: vec![Content::Text {
+                text: content.into(),
+            }],
             name: None,
             tool_calls: None,
             // 🆕 FIX: Skip empty tool_call_id to avoid API errors
@@ -245,26 +259,52 @@ pub struct FunctionDefinition {
 }
 
 /// A tool call from the assistant
+///
+/// 注意：在 SSE 流式响应中，增量 chunk 可能只包含 `index` + `function.arguments`，
+/// 不包含 `id` 和 `function.name`。这些字段在第一个 chunk 中提供。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
-    /// Tool call ID
-    pub id: String,
-    /// Tool type
-    pub r#type: String,
+    /// Tool call ID（增量 chunk 中可能缺失）
+    #[serde(default)]
+    pub id: Option<String>,
+    /// 在流式响应中用于匹配增量 chunk 的索引
+    #[serde(default)]
+    pub index: Option<u32>,
+    /// Tool type（增量 chunk 中可能缺失）
+    #[serde(default)]
+    pub r#type: Option<String>,
     /// Function call
     pub function: FunctionCall,
+}
+
+impl ToolCall {
+    /// 获取 tool call ID（ unwrap Option ）
+    pub fn id(&self) -> &str {
+        self.id.as_deref().unwrap_or("")
+    }
+
+    /// 检查此 tool call 是否完整（有 id 和 name）
+    pub fn is_complete(&self) -> bool {
+        self.id.is_some() && self.function.name.is_some()
+    }
 }
 
 /// Function call details
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionCall {
-    /// Function name
-    pub name: String,
-    /// Function arguments as JSON string
+    /// Function name（增量 chunk 中可能缺失）
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Function arguments as JSON string（增量 chunk 中持续追加）
     pub arguments: String,
 }
 
 impl FunctionCall {
+    /// 获取函数名（ unwrap Option ）
+    pub fn name(&self) -> &str {
+        self.name.as_deref().unwrap_or("")
+    }
+
     /// Parse arguments as JSON
     pub fn parse_arguments<T: serde::de::DeserializeOwned>(&self) -> Result<T, serde_json::Error> {
         serde_json::from_str(&self.arguments)

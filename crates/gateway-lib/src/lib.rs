@@ -51,6 +51,7 @@ pub use agent_runtime::{
     AgentCapability, AgentConfig, AgentConfigBuilder, AgentEvent, AgentHandle, AgentId,
     AgentRuntime, AgentRuntimeFactory, AgentState, AgentStatus, LlmConfig, MemoryConfig,
     RuntimeConfig, SandboxLevel, StateCommand as AgentStateCommand, TaskConfig, TaskId, TaskResult,
+    TaskStreamCallback,
 };
 pub use beebotos_core::{
     bail as core_bail, err as core_err, BeeBotOSError, ErrorBuilder, ErrorCode, ErrorContext,

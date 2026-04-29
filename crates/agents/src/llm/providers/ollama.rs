@@ -271,10 +271,11 @@ impl LLMProvider for OllamaProvider {
         let tool_calls = ollama_resp.message.tool_calls.map(|tcs| {
             tcs.into_iter()
                 .map(|tc| ToolCall {
-                    id: self.generate_id(),
-                    r#type: "function".to_string(),
+                    id: Some(self.generate_id()),
+                    index: None,
+                    r#type: Some("function".to_string()),
                     function: FunctionCall {
-                        name: tc.function.name,
+                        name: Some(tc.function.name),
                         arguments: serde_json::to_string(&tc.function.arguments)
                             .unwrap_or_default(),
                     },

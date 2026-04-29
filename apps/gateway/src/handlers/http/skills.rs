@@ -4,10 +4,11 @@
 //! Skills are Markdown-based (SKILL.md + YAML frontmatter) and used
 //! by the Agent through tool-calling, not executed directly.
 
+use std::sync::Arc;
+
 use axum::extract::{Path, Query, State};
 use axum::Json;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use tracing::{info, warn};
 
 use crate::clients::{BeeHubClient, ClawHubClient, HubType, SkillMetadata};
@@ -86,10 +87,13 @@ pub async fn install_skill(
                 correlation_id: uuid::Uuid::new_v4().to_string(),
             })?;
 
-            client.get_skill(&req.source).await.map_err(|e| GatewayError::Internal {
-                message: format!("Failed to get skill from ClawHub: {}", e),
-                correlation_id: uuid::Uuid::new_v4().to_string(),
-            })?
+            client
+                .get_skill(&req.source)
+                .await
+                .map_err(|e| GatewayError::Internal {
+                    message: format!("Failed to get skill from ClawHub: {}", e),
+                    correlation_id: uuid::Uuid::new_v4().to_string(),
+                })?
         }
         HubType::BeeHub => {
             let client = BeeHubClient::new().map_err(|e| GatewayError::Internal {
@@ -97,10 +101,13 @@ pub async fn install_skill(
                 correlation_id: uuid::Uuid::new_v4().to_string(),
             })?;
 
-            client.get_skill(&req.source).await.map_err(|e| GatewayError::Internal {
-                message: format!("Failed to get skill from BeeHub: {}", e),
-                correlation_id: uuid::Uuid::new_v4().to_string(),
-            })?
+            client
+                .get_skill(&req.source)
+                .await
+                .map_err(|e| GatewayError::Internal {
+                    message: format!("Failed to get skill from BeeHub: {}", e),
+                    correlation_id: uuid::Uuid::new_v4().to_string(),
+                })?
         }
     };
 
@@ -112,7 +119,10 @@ pub async fn install_skill(
     // Check if already installed
     let skill_dir = get_skill_install_path(&metadata.id);
     if skill_dir.exists() {
-        warn!("Skill {} is already installed at {:?}", metadata.id, skill_dir);
+        warn!(
+            "Skill {} is already installed at {:?}",
+            metadata.id, skill_dir
+        );
         return Ok(Json(InstallSkillResponse {
             success: true,
             skill_id: metadata.id,
@@ -130,24 +140,27 @@ pub async fn install_skill(
                 message: format!("Failed to create ClawHub client: {}", e),
                 correlation_id: uuid::Uuid::new_v4().to_string(),
             })?;
-            client.download_skill(&req.source, req.version.as_deref()).await
+            client
+                .download_skill(&req.source, req.version.as_deref())
+                .await
         }
         HubType::BeeHub => {
             let client = BeeHubClient::new().map_err(|e| GatewayError::Internal {
                 message: format!("Failed to create BeeHub client: {}", e),
                 correlation_id: uuid::Uuid::new_v4().to_string(),
             })?;
-            client.download_skill(&req.source, req.version.as_deref()).await
+            client
+                .download_skill(&req.source, req.version.as_deref())
+                .await
         }
     };
 
     match download_result {
         Ok(content_bytes) => {
-            let content = String::from_utf8(content_bytes)
-                .map_err(|e| GatewayError::Internal {
-                    message: format!("Invalid UTF-8 in skill content: {}", e),
-                    correlation_id: uuid::Uuid::new_v4().to_string(),
-                })?;
+            let content = String::from_utf8(content_bytes).map_err(|e| GatewayError::Internal {
+                message: format!("Invalid UTF-8 in skill content: {}", e),
+                correlation_id: uuid::Uuid::new_v4().to_string(),
+            })?;
             install_skill_content(&metadata, &content)
                 .await
                 .map_err(|e| GatewayError::Internal {
@@ -188,7 +201,11 @@ pub async fn install_skill(
                 registry
                     .register(
                         skill,
-                        metadata.tags.first().map(|s| s.as_str()).unwrap_or("general"),
+                        metadata
+                            .tags
+                            .first()
+                            .map(|s| s.as_str())
+                            .unwrap_or("general"),
                         metadata.tags.clone(),
                     )
                     .await;
@@ -200,7 +217,10 @@ pub async fn install_skill(
         }
     }
 
-    info!("Successfully installed skill {} to {:?}", metadata.id, skill_dir);
+    info!(
+        "Successfully installed skill {} to {:?}",
+        metadata.id, skill_dir
+    );
 
     Ok(Json(InstallSkillResponse {
         success: true,
@@ -294,10 +314,12 @@ pub async fn get_skill(
     State(_state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<SkillInfoResponse>, GatewayError> {
-    let skill = get_skill_info(&id).await.map_err(|e| GatewayError::NotFound {
-        resource: format!("Skill: {}", id),
-        id: id.clone(),
-    })?;
+    let skill = get_skill_info(&id)
+        .await
+        .map_err(|e| GatewayError::NotFound {
+            resource: format!("Skill: {}", id),
+            id: id.clone(),
+        })?;
 
     Ok(Json(skill))
 }
@@ -390,20 +412,8 @@ async fn install_skill_metadata_only(
 
     // Write SKILL.md with YAML frontmatter
     let skill_md = format!(
-        "---\n\
-         id: {}\n\
-         name: {}\n\
-         version: {}\n\
-         description: {}\n\
-         author: {}\n\
-         license: {}\n\
-         capabilities:\n\
-         {}\n\
-         ---\n\
-         \n\
-         # {}\n\
-         \n\
-         {}\n",
+        "---\nid: {}\nname: {}\nversion: {}\ndescription: {}\nauthor: {}\nlicense: \
+         {}\ncapabilities:\n{}\n---\n\n# {}\n\n{}\n",
         metadata.id,
         metadata.name,
         metadata.version,
@@ -496,26 +506,11 @@ async fn list_installed_skills() -> Result<Vec<SkillInfoResponse>, Box<dyn std::
                     if let Ok(manifest) = serde_yaml::from_str::<serde_yaml::Value>(&frontmatter) {
                         skills.push(SkillInfoResponse {
                             id: skill_id.clone(),
-                            name: manifest["name"]
-                                .as_str()
-                                .unwrap_or(&skill_id)
-                                .to_string(),
-                            version: manifest["version"]
-                                .as_str()
-                                .unwrap_or("1.0.0")
-                                .to_string(),
-                            description: manifest["description"]
-                                .as_str()
-                                .unwrap_or("")
-                                .to_string(),
-                            author: manifest["author"]
-                                .as_str()
-                                .unwrap_or("Unknown")
-                                .to_string(),
-                            license: manifest["license"]
-                                .as_str()
-                                .unwrap_or("MIT")
-                                .to_string(),
+                            name: manifest["name"].as_str().unwrap_or(&skill_id).to_string(),
+                            version: manifest["version"].as_str().unwrap_or("1.0.0").to_string(),
+                            description: manifest["description"].as_str().unwrap_or("").to_string(),
+                            author: manifest["author"].as_str().unwrap_or("Unknown").to_string(),
+                            license: manifest["license"].as_str().unwrap_or("MIT").to_string(),
                             installed: true,
                             capabilities: yaml_string_array(&manifest["capabilities"]),
                             tags: yaml_string_array(&manifest["tags"]),
@@ -543,15 +538,9 @@ async fn get_skill_info(skill_id: &str) -> Result<SkillInfoResponse, Box<dyn std
     Ok(SkillInfoResponse {
         id: skill_id.to_string(),
         name: manifest["name"].as_str().unwrap_or(skill_id).to_string(),
-        version: manifest["version"]
-            .as_str()
-            .unwrap_or("1.0.0")
-            .to_string(),
+        version: manifest["version"].as_str().unwrap_or("1.0.0").to_string(),
         description: manifest["description"].as_str().unwrap_or("").to_string(),
-        author: manifest["author"]
-            .as_str()
-            .unwrap_or("Unknown")
-            .to_string(),
+        author: manifest["author"].as_str().unwrap_or("Unknown").to_string(),
         license: manifest["license"].as_str().unwrap_or("MIT").to_string(),
         installed: true,
         capabilities: yaml_string_array(&manifest["capabilities"]),

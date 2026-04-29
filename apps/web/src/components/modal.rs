@@ -1,7 +1,8 @@
 //! Reusable Modal component
 
-use crate::i18n::I18nContext;
 use leptos::prelude::*;
+
+use crate::i18n::I18nContext;
 
 /// A generic modal dialog with overlay, click-outside-to-close, and header
 #[component]

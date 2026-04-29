@@ -37,6 +37,12 @@ pub struct MessageProcessor {
     webchat_service: Option<Arc<WebchatService>>,
     /// Skill 注册表
     skill_registry: Option<Arc<beebotos_agents::skills::SkillRegistry>>,
+    /// 🆕 STREAMING FIX: Chat event handler for WebSocket delta broadcasting
+    chat_event_handler: Option<Arc<crate::websocket::chat_event::ChatEventHandler>>,
+    /// 🆕 STREAMING FIX: WebSocket connections for broadcasting
+    ws_connections: Option<Arc<tokio::sync::Mutex<Vec<crate::websocket::connection::WsConnection>>>>,
+    /// 🆕 STREAMING FIX: Session subscriber registry
+    session_subscribers: Option<Arc<tokio::sync::Mutex<crate::websocket::state::SessionMessageSubscriberRegistry>>>,
 }
 
 impl MessageProcessor {
@@ -57,6 +63,37 @@ impl MessageProcessor {
             memory_system,
             webchat_service,
             skill_registry,
+            chat_event_handler: None,
+            ws_connections: None,
+            session_subscribers: None,
+        }
+    }
+
+    /// 🆕 STREAMING FIX: Create with WebSocket streaming support
+    pub fn with_streaming(
+        llm_service: Arc<LlmService>,
+        channel_registry: Arc<ChannelRegistry>,
+        memory_system: Option<Arc<beebotos_agents::memory::UnifiedMemorySystem>>,
+        webchat_service: Option<Arc<WebchatService>>,
+        skill_registry: Option<Arc<beebotos_agents::skills::SkillRegistry>>,
+        chat_event_handler: Arc<crate::websocket::chat_event::ChatEventHandler>,
+        ws_connections: Arc<tokio::sync::Mutex<Vec<crate::websocket::connection::WsConnection>>>,
+        session_subscribers: Arc<
+            tokio::sync::Mutex<crate::websocket::state::SessionMessageSubscriberRegistry>,
+        >,
+    ) -> Self {
+        Self {
+            deduplicator: Arc::new(MessageDeduplicator::default()),
+            session_manager: SessionManager::default(),
+            multimodal_processor: MultimodalProcessor::new(),
+            llm_service,
+            channel_registry,
+            memory_system,
+            webchat_service,
+            skill_registry,
+            chat_event_handler: Some(chat_event_handler),
+            ws_connections: Some(ws_connections),
+            session_subscribers: Some(session_subscribers),
         }
     }
 
@@ -472,9 +509,84 @@ impl MessageProcessor {
                     message: format!("Failed to add assistant message: {}", e),
                     correlation_id: Uuid::new_v4().to_string(),
                 })?;
-            // 发送回复
-            self.send_reply(platform, channel_id, &message, &answer)
-                .await?;
+
+            // WebChat 平台使用新版 chat event 系统发送回复
+            if platform == PlatformType::WebChat
+                && self.chat_event_handler.is_some()
+                && self.ws_connections.is_some()
+            {
+                let run_id = Uuid::new_v4().to_string();
+                let session_key = format!("user:{}", db_session_id);
+                let chat_handler = self.chat_event_handler.as_ref().unwrap();
+                let ws_conns = self.ws_connections.as_ref().unwrap();
+
+                // 构造 broadcast 函数
+                let ws_conns_clone = Arc::clone(ws_conns);
+                let session_key_clone = session_key.clone();
+                let broadcast_fn = move |event: String, payload: serde_json::Value, _opts: Option<crate::websocket::broadcast::BroadcastOptions>| {
+                    let ws_conns = ws_conns_clone.clone();
+                    let session_key = session_key_clone.clone();
+                    tokio::spawn(async move {
+                        let targets: Vec<(String, tokio::sync::mpsc::UnboundedSender<String>)> = {
+                            let conns = ws_conns.lock().await;
+                            conns
+                                .iter()
+                                .filter(|c| c.subscribed_sessions.contains(&session_key))
+                                .map(|c| (c.conn_id.clone(), c.send_tx.clone()))
+                                .collect()
+                        };
+                        let mut sent = 0;
+                        for (conn_id, send_tx) in targets {
+                            let ws_msg = serde_json::json!({
+                                "type": "event",
+                                "event": event,
+                                "payload": payload,
+                            });
+                            match send_tx.send(ws_msg.to_string()) {
+                                Ok(_) => sent += 1,
+                                Err(e) => {
+                                    tracing::warn!("[FAST-PATH] dead conn={}: {}", conn_id, e);
+                                }
+                            }
+                        }
+                        tracing::info!("[FAST-PATH] event={} sent={}", event, sent);
+                    });
+                };
+
+                // 发送 delta（全量文本）
+                chat_handler
+                    .emit_chat_delta(
+                        &session_key,
+                        &run_id,
+                        &run_id,
+                        1,
+                        &answer,
+                        None,
+                        &broadcast_fn,
+                    )
+                    .await;
+
+                // 发送 final 事件
+                chat_handler
+                    .emit_chat_final(
+                        &session_key,
+                        &run_id,
+                        &run_id,
+                        2,
+                        "done",
+                        None,
+                        None,
+                        None,
+                        &broadcast_fn,
+                    )
+                    .await;
+
+                info!("✅ Fast path 回复已通过 chat event 发送");
+            } else {
+                // 非 WebChat 平台，使用旧版 channel send
+                self.send_reply(platform, channel_id, &message, &answer)
+                    .await?;
+            }
             return Ok(());
         }
 
@@ -575,6 +687,9 @@ impl MessageProcessor {
             memory_system: self.memory_system.as_ref().map(Arc::clone),
             webchat_service: self.webchat_service.as_ref().map(Arc::clone),
             skill_registry: self.skill_registry.as_ref().map(Arc::clone),
+            chat_event_handler: self.chat_event_handler.as_ref().map(Arc::clone),
+            ws_connections: self.ws_connections.as_ref().map(Arc::clone),
+            session_subscribers: self.session_subscribers.as_ref().map(Arc::clone),
         });
         let session_id = session.id.clone();
         let db_session_id_bg = db_session_id.clone();
@@ -586,66 +701,190 @@ impl MessageProcessor {
         let platform_bg = platform;
         let agent_runtime_bg = Arc::clone(&agent_runtime);
 
-        tokio::spawn(async move {
-            info!("🤖 [BG] Agent {} 开始后台处理消息", agent_id_bg);
-            let start = std::time::Instant::now();
+        // 🆕 STREAMING FIX: WebChat 平台使用流式执行
+        let is_streaming = platform == PlatformType::WebChat
+            && processor.chat_event_handler.is_some()
+            && processor.ws_connections.is_some();
 
-            let result = agent_runtime_bg.execute_task(&agent_id_bg, task).await;
-            let llm_response = match result {
-                Ok(r) if r.success => r
-                    .output
-                    .as_str()
-                    .map(|s| s.to_string())
-                    .or_else(|| {
-                        r.output
-                            .get("response")
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.to_string())
-                    })
-                    .unwrap_or_else(|| "Agent returned empty response".to_string()),
-                Ok(r) => r
-                    .error
-                    .clone()
-                    .unwrap_or_else(|| "Agent processing failed".to_string()),
-                Err(e) => {
-                    error!("❌ [BG] Agent execution failed: {}", e);
-                    format!("处理失败: {}", e)
-                }
-            };
+        if is_streaming {
+            let run_id = Uuid::new_v4().to_string();
+            let session_key = format!("user:{}", db_session_id_bg);
+            info!("[STREAMING] Creating stream callback with session_key={}, run_id={}", session_key, run_id);
+            let chat_handler = processor.chat_event_handler.as_ref().unwrap().clone();
+            let ws_conns = processor.ws_connections.as_ref().unwrap().clone();
 
-            info!(
-                "🤖 [BG] Agent {} 回复 ({}ms): {}",
-                agent_id_bg,
-                start.elapsed().as_millis(),
-                llm_response.chars().take(100).collect::<String>()
+            let callback = MessageProcessorStreamCallback::new(
+                session_key,
+                run_id,
+                chat_handler,
+                ws_conns,
             );
 
-            // 更新会话历史
-            let _ = processor
-                .session_manager
-                .add_message(&session_id, "assistant", &llm_response, false, vec![])
-                .await;
+            tokio::spawn(async move {
+                info!("🤖 [BG] Agent {} 开始流式处理消息", agent_id_bg);
+                let start = std::time::Instant::now();
 
-            // 持久化 AI 回复
-            if let Some(ref svc) = processor.webchat_service {
-                let _ = svc
-                    .save_message(
-                        &db_session_id_bg,
-                        "assistant",
-                        &llm_response,
-                        Some(serde_json::json!({
-                            "platform": platform_bg.to_string(),
-                            "channel_id": channel_id_bg.clone(),
-                        })),
-                        None,
-                    )
+                // 🆕 FIX: 立即发送 processing 心跳，保持 WebSocket 连接活跃
+                callback.send_processing_event();
+
+                let result = agent_runtime_bg
+                    .execute_task_stream(&agent_id_bg, task, Box::new(callback))
                     .await;
-            }
 
-            // 发送最终回复
-            let _ = processor
-                .send_reply(platform_bg, &channel_id_bg, &message_bg, &llm_response)
-                .await;
+                let llm_response = match result {
+                    Ok(r) if r.success => r
+                        .output
+                        .as_str()
+                        .map(|s| s.to_string())
+                        .unwrap_or_default(),
+                    Ok(r) => r
+                        .error
+                        .clone()
+                        .unwrap_or_else(|| "Agent processing failed".to_string()),
+                    Err(e) => {
+                        error!("❌ [BG] Agent streaming execution failed: {}", e);
+                        format!("处理失败: {}", e)
+                    }
+                };
+
+                info!(
+                    "🤖 [BG] Agent {} 流式回复完成 ({}ms): {}",
+                    agent_id_bg,
+                    start.elapsed().as_millis(),
+                    llm_response.chars().take(100).collect::<String>()
+                );
+
+                // 更新会话历史
+                let _ = processor
+                    .session_manager
+                    .add_message(&session_id, "assistant", &llm_response, false, vec![])
+                    .await;
+
+                // 持久化 AI 回复
+                if let Some(ref svc) = processor.webchat_service {
+                    let _ = svc
+                        .save_message(
+                            &db_session_id_bg,
+                            "assistant",
+                            &llm_response,
+                            Some(serde_json::json!({
+                                "platform": platform_bg.to_string(),
+                                "channel_id": channel_id_bg.clone(),
+                            })),
+                            None,
+                        )
+                        .await;
+                }
+
+                // Memory 回写
+                if let Some(ref memory) = processor.memory_system {
+                    use beebotos_agents::memory::markdown_storage::{
+                        MarkdownMemoryEntry, MemoryFileType,
+                    };
+                    let user_entry = MarkdownMemoryEntry {
+                        id: Uuid::new_v4(),
+                        timestamp: chrono::Utc::now(),
+                        title: format!("User: {}", content_bg.chars().take(30).collect::<String>()),
+                        content: content_bg.clone(),
+                        category: "conversation".to_string(),
+                        importance: 0.5,
+                        metadata: {
+                            let mut m = HashMap::new();
+                            m.insert("session_id".to_string(), db_session_id_bg.clone());
+                            m.insert("user_id".to_string(), user_id_bg.clone());
+                            m.insert("role".to_string(), "user".to_string());
+                            m.insert("channel".to_string(), platform_bg.to_string());
+                            m
+                        },
+                        session_id: Some(db_session_id_bg.clone()),
+                    };
+                    let _ = memory.store(MemoryFileType::Core, &user_entry, None).await;
+
+                    let assistant_entry = MarkdownMemoryEntry {
+                        id: Uuid::new_v4(),
+                        timestamp: chrono::Utc::now(),
+                        title: format!(
+                            "Assistant: {}",
+                            llm_response.chars().take(30).collect::<String>()
+                        ),
+                        content: llm_response.clone(),
+                        category: "conversation".to_string(),
+                        importance: 0.5,
+                        metadata: {
+                            let mut m = HashMap::new();
+                            m.insert("session_id".to_string(), db_session_id_bg.clone());
+                            m.insert("user_id".to_string(), user_id_bg.clone());
+                            m.insert("role".to_string(), "assistant".to_string());
+                            m.insert("channel".to_string(), platform_bg.to_string());
+                            m
+                        },
+                        session_id: Some(db_session_id_bg),
+                    };
+                    let _ = memory.store(MemoryFileType::Core, &assistant_entry, None).await;
+                }
+            });
+        } else {
+            // 原有非流式执行路径
+            tokio::spawn(async move {
+                info!("🤖 [BG] Agent {} 开始后台处理消息", agent_id_bg);
+                let start = std::time::Instant::now();
+
+                let result = agent_runtime_bg.execute_task(&agent_id_bg, task).await;
+                let llm_response = match result {
+                    Ok(r) if r.success => r
+                        .output
+                        .as_str()
+                        .map(|s| s.to_string())
+                        .or_else(|| {
+                            r.output
+                                .get("response")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string())
+                        })
+                        .unwrap_or_else(|| "Agent returned empty response".to_string()),
+                    Ok(r) => r
+                        .error
+                        .clone()
+                        .unwrap_or_else(|| "Agent processing failed".to_string()),
+                    Err(e) => {
+                        error!("❌ [BG] Agent execution failed: {}", e);
+                        format!("处理失败: {}", e)
+                    }
+                };
+
+                info!(
+                    "🤖 [BG] Agent {} 回复 ({}ms): {}",
+                    agent_id_bg,
+                    start.elapsed().as_millis(),
+                    llm_response.chars().take(100).collect::<String>()
+                );
+
+                // 更新会话历史
+                let _ = processor
+                    .session_manager
+                    .add_message(&session_id, "assistant", &llm_response, false, vec![])
+                    .await;
+
+                // 持久化 AI 回复
+                if let Some(ref svc) = processor.webchat_service {
+                    let _ = svc
+                        .save_message(
+                            &db_session_id_bg,
+                            "assistant",
+                            &llm_response,
+                            Some(serde_json::json!({
+                                "platform": platform_bg.to_string(),
+                                "channel_id": channel_id_bg.clone(),
+                            })),
+                            None,
+                        )
+                        .await;
+                }
+
+                // 发送最终回复
+                let _ = processor
+                    .send_reply(platform_bg, &channel_id_bg, &message_bg, &llm_response)
+                    .await;
 
             // Memory 回写
             if let Some(ref memory) = processor.memory_system {
@@ -696,6 +935,7 @@ impl MessageProcessor {
                     .await;
             }
         });
+        }
 
         Ok(())
     }
@@ -1719,4 +1959,223 @@ impl ImageFormat {
 enum MessagePart {
     Text(String),
     Image { data: String, mime_type: String },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🆕 STREAMING FIX: WebChat streaming callback implementation
+// ═══════════════════════════════════════════════════════════════════════════════
+
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// 广播消息（通过 channel 发送给后台广播任务）
+#[derive(Debug)]
+struct BroadcastMessage {
+    event: String,
+    payload: serde_json::Value,
+}
+
+/// Stream callback for WebChat that bridges Agent LLM streaming to WebSocket
+/// delta events
+pub struct MessageProcessorStreamCallback {
+    session_key: String,
+    run_id: String,
+    seq: AtomicU64,
+    chat_event_handler: Arc<crate::websocket::chat_event::ChatEventHandler>,
+    ws_connections: Arc<tokio::sync::Mutex<Vec<crate::websocket::connection::WsConnection>>>,
+    aborted: std::sync::atomic::AtomicBool,
+    broadcast_tx: tokio::sync::mpsc::UnboundedSender<BroadcastMessage>,
+}
+
+impl MessageProcessorStreamCallback {
+    pub fn new(
+        session_key: String,
+        run_id: String,
+        chat_event_handler: Arc<crate::websocket::chat_event::ChatEventHandler>,
+        ws_connections: Arc<tokio::sync::Mutex<Vec<crate::websocket::connection::WsConnection>>>,
+    ) -> Self {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<BroadcastMessage>();
+        let ws_conns_bg = Arc::clone(&ws_connections);
+        let session_key_bg = session_key.clone();
+
+        // 启动常驻后台广播任务，避免每次 tokio::spawn 创建新任务
+        tokio::spawn(async move {
+            info!("[BROADCAST] broadcast task started for session_key={}", session_key_bg);
+            while let Some(msg) = rx.recv().await {
+                info!("[BROADCAST] received msg for event={}", msg.event);
+
+                // 先获取锁收集需要发送的 send_tx 和 conn_id，然后立即释放锁
+                // 通过独立通道发送，彻底消除 socket 锁竞争
+                let targets: Vec<(String, tokio::sync::mpsc::UnboundedSender<String>)> = {
+                    let conns = ws_conns_bg.lock().await;
+                    conns
+                        .iter()
+                        .filter(|c| c.subscribed_sessions.contains(&session_key_bg))
+                        .map(|c| (c.conn_id.clone(), c.send_tx.clone()))
+                        .collect()
+                };
+
+                let mut dead_conns = Vec::new();
+                let mut sent = 0;
+                for (conn_id, send_tx) in targets {
+                    let ws_msg = serde_json::json!({
+                        "type": "event",
+                        "event": msg.event,
+                        "payload": msg.payload,
+                    });
+                    match send_tx.send(ws_msg.to_string()) {
+                        Ok(_) => sent += 1,
+                        Err(e) => {
+                            warn!("[BROADCAST] dead conn={}, removing: {}", conn_id, e);
+                            dead_conns.push(conn_id);
+                        }
+                    }
+                }
+
+                // 移除 dead connections
+                if !dead_conns.is_empty() {
+                    let mut conns = ws_conns_bg.lock().await;
+                    conns.retain(|c| !dead_conns.contains(&c.conn_id));
+                }
+
+                info!(
+                    "[BROADCAST] event={} sent={} dead={} total_targets={} target_session_key={}",
+                    msg.event, sent, dead_conns.len(), sent + dead_conns.len(), session_key_bg
+                );
+            }
+            info!("[BROADCAST] broadcast task shutdown");
+        });
+
+        Self {
+            session_key,
+            run_id,
+            seq: AtomicU64::new(0),
+            chat_event_handler,
+            ws_connections,
+            aborted: std::sync::atomic::AtomicBool::new(false),
+            broadcast_tx: tx,
+        }
+    }
+
+    fn next_seq(&self) -> u64 {
+        self.seq.fetch_add(1, Ordering::SeqCst)
+    }
+
+    fn create_broadcast_fn(
+        &self,
+    ) -> impl Fn(String, serde_json::Value, Option<crate::websocket::broadcast::BroadcastOptions>) {
+        let tx = self.broadcast_tx.clone();
+        move |event: String, payload: serde_json::Value, _opts: Option<crate::websocket::broadcast::BroadcastOptions>| {
+            match tx.send(BroadcastMessage {
+                event: event.clone(),
+                payload: payload.clone(),
+            }) {
+                Ok(_) => info!("[BROADCAST-SEND] event={} queued successfully", event),
+                Err(e) => warn!("[BROADCAST-SEND] event={} send failed: {}", event, e),
+            }
+        }
+    }
+
+    /// Send a processing heartbeat to keep WebSocket alive during agent
+    /// processing
+    pub fn send_processing_event(&self) {
+        let _ = self.broadcast_tx.send(BroadcastMessage {
+            event: "chat".to_string(),
+            payload: serde_json::json!({
+                "run_id": self.run_id,
+                "session_key": self.session_key,
+                "seq": 0,
+                "state": "processing",
+                "message": null,
+            }),
+        });
+    }
+}
+
+#[async_trait::async_trait]
+impl gateway::TaskStreamCallback for MessageProcessorStreamCallback {
+    async fn on_delta(&self, text: &str, delta: Option<&str>) {
+        let seq = self.next_seq();
+        let broadcast_fn = self.create_broadcast_fn();
+        self.chat_event_handler
+            .emit_chat_delta(
+                &self.session_key,
+                &self.run_id,
+                &self.run_id,
+                seq,
+                text,
+                delta,
+                &broadcast_fn,
+            )
+            .await;
+    }
+
+    async fn on_tool_start(&self, _tool_call_id: &str, _name: &str, _args: &str) {
+        // Tool events can be broadcasted as agent events if needed
+        // For now, silently track tool execution
+    }
+
+    async fn on_tool_result(&self, _tool_call_id: &str, _result: &str) {
+        // Tool results are internal to the Agent
+    }
+
+    async fn on_tool_error(&self, _tool_call_id: &str, _error: &str) {
+        // Tool errors are internal
+    }
+
+    async fn on_final(&self, text: &str) {
+        info!("[STREAMING] on_final called, text_len={}, session_key={}", text.len(), self.session_key);
+        // 先将最终文本刷新到 buffer，确保 emit_chat_final 能取到内容
+        let seq = self.next_seq();
+        let broadcast_fn = self.create_broadcast_fn();
+        self.chat_event_handler
+            .emit_chat_delta(
+                &self.session_key,
+                &self.run_id,
+                &self.run_id,
+                seq,
+                text,
+                None,
+                &broadcast_fn,
+            )
+            .await;
+
+        let seq = self.next_seq();
+        let broadcast_fn = self.create_broadcast_fn();
+        self.chat_event_handler
+            .emit_chat_final(
+                &self.session_key,
+                &self.run_id,
+                &self.run_id,
+                seq,
+                "done",
+                None,
+                None,
+                None,
+                &broadcast_fn,
+            )
+            .await;
+        info!("[STREAMING] on_final completed");
+    }
+
+    async fn on_error(&self, error: &str) {
+        let seq = self.next_seq();
+        let broadcast_fn = self.create_broadcast_fn();
+        self.chat_event_handler
+            .emit_chat_final(
+                &self.session_key,
+                &self.run_id,
+                &self.run_id,
+                seq,
+                "error",
+                Some(error),
+                None,
+                None,
+                &broadcast_fn,
+            )
+            .await;
+    }
+
+    fn is_aborted(&self) -> bool {
+        self.aborted.load(Ordering::SeqCst)
+    }
 }

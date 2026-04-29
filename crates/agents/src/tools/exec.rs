@@ -54,8 +54,8 @@ impl ToolHandler for ExecTool {
     }
 
     async fn execute(&self, arguments: &str) -> Result<String, String> {
-        let args: serde_json::Value = serde_json::from_str(arguments)
-            .map_err(|e| format!("Invalid arguments: {}", e))?;
+        let args: serde_json::Value =
+            serde_json::from_str(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
 
         let command = args["command"].as_str().ok_or("Missing command")?;
         let timeout_secs = args["timeout"].as_u64().unwrap_or(30);
@@ -79,13 +79,10 @@ impl ToolHandler for ExecTool {
             cmd.current_dir(dir);
         }
 
-        let output = tokio::time::timeout(
-            Duration::from_secs(timeout_secs),
-            cmd.output(),
-        )
-        .await
-        .map_err(|_| format!("Command timed out after {} seconds", timeout_secs))?
-        .map_err(|e| format!("Failed to execute command: {}", e))?;
+        let output = tokio::time::timeout(Duration::from_secs(timeout_secs), cmd.output())
+            .await
+            .map_err(|_| format!("Command timed out after {} seconds", timeout_secs))?
+            .map_err(|e| format!("Failed to execute command: {}", e))?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);

@@ -87,12 +87,14 @@ pub struct AuthUser {
 }
 
 impl AuthUser {
-    /// Check if user has role - disabled, all authenticated users have all roles
+    /// Check if user has role - disabled, all authenticated users have all
+    /// roles
     pub fn has_role(&self, _role: &str) -> bool {
         true
     }
 
-    /// Check if user is admin - disabled, all authenticated users are treated as admin
+    /// Check if user is admin - disabled, all authenticated users are treated
+    /// as admin
     pub fn is_admin(&self) -> bool {
         true
     }
@@ -554,12 +556,14 @@ impl GatewayState {
     }
 }
 
-/// Role-based access control (RBAC) helper - disabled, all authenticated users have full access
+/// Role-based access control (RBAC) helper - disabled, all authenticated users
+/// have full access
 pub fn require_role(_auth_user: &AuthUser, _role: &str) -> Result<()> {
     Ok(())
 }
 
-/// Require any of the specified roles - disabled, all authenticated users have full access
+/// Require any of the specified roles - disabled, all authenticated users have
+/// full access
 pub fn require_any_role(_auth_user: &AuthUser, _roles: &[&str]) -> Result<()> {
     Ok(())
 }

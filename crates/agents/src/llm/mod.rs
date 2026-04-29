@@ -34,7 +34,7 @@ pub mod types;
 // Re-export HTTP client types
 // Re-export main types
 pub use adapter::{LLMClientAdapter, LegacyLLMClientBuilder};
-pub use client::{ClientMetrics, LLMClient, LLMClientBuilder, ToolHandler};
+pub use client::{ClientMetrics, LLMClient, LLMClientBuilder, StreamCallback, ToolHandler};
 // Re-export failover types
 pub use failover::{FailoverConfig, FailoverProvider, FailoverProviderBuilder};
 pub use http_client::{LLMHttpClient, OpenAIRequestBuilder, ProviderConfig, ProviderInitParams};

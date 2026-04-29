@@ -16,10 +16,8 @@ pub use command_handler::{
     CommandContext, CommandHandler, CommandResult, RuntimeInfo, RuntimeStatus,
 };
 pub use link_handler::{format_summary_for_display, ContentType, LinkHandler, LinkSummary};
-pub use loader::{
-    LoadedSkill, SkillLoadError, SkillLoader, SkillManifest,
-};
-pub use rating::{RatingSummary, SkillRating, SkillRatingStore};
+pub use loader::{LoadedSkill, SkillLoadError, SkillLoader, SkillManifest};
 pub use lockfile::{LockEntry, SkillLockfile};
+pub use rating::{RatingSummary, SkillRating, SkillRatingStore};
 pub use registry::{RegisteredSkill, SkillDefinition, SkillRegistry, Version, VersionError};
 pub use skill_prompt::build_skills_prompt;

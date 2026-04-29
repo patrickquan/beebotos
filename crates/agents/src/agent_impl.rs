@@ -15,16 +15,18 @@ use tracing::{error, info, warn};
 
 use crate::device::{AppLifecycle, Device, DeviceAutomation};
 use crate::error::AgentError;
+use crate::llm::{Message as LlmMessage, Role as LlmRole};
 use crate::planning::{
     ExecutionResult, Plan, PlanContext, PlanExecutor, PlanId, PlanStatus, PlanStep, PlanStrategy,
     PlanningEngine, RePlanner, StepType,
 };
 use crate::task::{Artifact, Task, TaskResult, TaskType};
+use crate::tools::{
+    ExecTool, ProcessTool, ReadFileTool, SearchFilesTool, WebFetchTool, WriteFileTool,
+};
 use crate::{
     a2a, communication, events, llm, mcp, queue, skills, state_manager, types, wallet, AgentConfig,
 };
-use crate::llm::{Message as LlmMessage, Role as LlmRole};
-use crate::tools::{ExecTool, ProcessTool, ReadFileTool, SearchFilesTool, WebFetchTool, WriteFileTool};
 
 pub struct Agent {
     pub(crate) config: AgentConfig,
@@ -203,18 +205,25 @@ impl Agent {
             client
                 .register_tool(
                     "list_skills",
-                    Box::new(skills::tools::list_skills::ListSkillsTool::new(registry.clone())),
+                    Box::new(skills::tools::list_skills::ListSkillsTool::new(
+                        registry.clone(),
+                    )),
                 )
                 .await;
             client
                 .register_tool(
                     "read_skill",
-                    Box::new(skills::tools::read_skill::ReadSkillTool::new(registry.clone())),
+                    Box::new(skills::tools::read_skill::ReadSkillTool::new(
+                        registry.clone(),
+                    )),
                 )
                 .await;
         }
 
-        info!("Registered all tools on LLM client for agent {}", self.config.id);
+        info!(
+            "Registered all tools on LLM client for agent {}",
+            self.config.id
+        );
         Ok(())
     }
 
@@ -420,6 +429,22 @@ impl Agent {
         result
     }
 
+    /// 🆕 STREAMING FIX: Execute task with streaming callbacks
+    pub async fn execute_task_stream(
+        &mut self,
+        task: Task,
+        callback: Arc<dyn crate::llm::client::StreamCallback>,
+    ) -> Result<TaskResult, AgentError> {
+        self.state = state_manager::AgentState::Working {
+            task_id: task.id.clone(),
+        };
+
+        let result = self.process_task_stream(task, callback).await;
+
+        self.state = state_manager::AgentState::Idle;
+        result
+    }
+
     /// 🟢 P1 FIX: 批量执行任务
     pub async fn execute_batch(&mut self, tasks: Vec<Task>) -> Vec<Result<TaskResult, AgentError>> {
         if tasks.is_empty() {
@@ -490,6 +515,55 @@ impl Agent {
             Ok((output, artifacts)) => {
                 info!(
                     "Task {} completed successfully in {}ms",
+                    task_id, execution_time_ms
+                );
+                Ok(TaskResult {
+                    task_id,
+                    success: true,
+                    output,
+                    artifacts,
+                    execution_time_ms,
+                })
+            }
+            Err(e) => {
+                error!(
+                    "Task {} failed after {}ms: {}",
+                    task_id, execution_time_ms, e
+                );
+                Err(e)
+            }
+        }
+    }
+
+    /// 🆕 STREAMING FIX: Process task with streaming callbacks
+    async fn process_task_stream(
+        &self,
+        task: Task,
+        callback: Arc<dyn crate::llm::client::StreamCallback>,
+    ) -> Result<TaskResult, AgentError> {
+        info!(
+            "Processing task {} of type {} with streaming",
+            task.id, task.task_type
+        );
+
+        let start_time = std::time::Instant::now();
+        let task_id = task.id.clone();
+
+        let result = match &task.task_type {
+            TaskType::LlmChat => self.handle_llm_task_stream(&task, callback).await,
+            // Other task types fall back to non-streaming
+            _ => self
+                .process_task(task)
+                .await
+                .map(|r| (r.output, r.artifacts)),
+        };
+
+        let execution_time_ms = start_time.elapsed().as_millis() as u64;
+
+        match result {
+            Ok((output, artifacts)) => {
+                info!(
+                    "Task {} completed successfully in {}ms (streaming)",
                     task_id, execution_time_ms
                 );
                 Ok(TaskResult {
@@ -930,8 +1004,9 @@ impl Agent {
         Ok((response, vec![]))
     }
 
-    /// 🆕 TOOL-CALLING FIX: Handle LLM task using the new tool-calling framework.
-    /// Builds messages with skills prompt and uses LLMClient's automatic tool loop.
+    /// 🆕 TOOL-CALLING FIX: Handle LLM task using the new tool-calling
+    /// framework. Builds messages with skills prompt and uses LLMClient's
+    /// automatic tool loop.
     async fn handle_llm_task_with_tools(
         &self,
         task: &Task,
@@ -964,14 +1039,23 @@ impl Agent {
                 system_content.push_str("\n\n");
                 system_content.push_str(&skills_prompt);
                 system_content.push_str(
-                    "\n\n在回复之前：扫描 <available_skills> 中的 <description> 条目。\
-                     如果恰好有一个技能明显适用：使用 read_skill 工具读取其 SKILL.md，然后遵循它。\
-                     如果多个可能适用：选择最具体的一个，然后读取/遵循它。\
-                     如果没有明显适用的：不要读取任何 SKILL.md。\
-                     约束：永远不要预先读取多个技能；只在选择后读取。"
+                    "\n\n在回复之前：扫描 <available_skills> 中的 <description> \
+                     条目。如果恰好有一个技能明显适用：使用 read_skill 工具读取其 \
+                     SKILL.md，然后遵循它。如果多个可能适用：选择最具体的一个，然后读取/遵循它。\
+                     如果没有明显适用的：不要读取任何 \
+                     SKILL.md。约束：永远不要预先读取多个技能；只在选择后读取。",
                 );
             }
         }
+
+        // 🆕 FIX: 添加工具调用约束，防止无限循环
+        system_content.push_str(
+            "\n\n[工具调用约束]\n\
+             1. 你最多可以连续调用 5 次工具。如果 5 次后仍未获得所需信息，请直接告诉用户当前无法获取该信息。\n\
+             2. 不要反复调用同一个工具查询相同的内容。\n\
+             3. 如果工具执行失败（如文件不存在、命令报错），不要继续尝试类似的操作，而是基于已有信息回答用户。\n\
+             4. 每次工具调用后，优先基于返回结果给出文本回答，而不是立即调用下一个工具。",
+        );
 
         // Build messages for LLM
         let messages = vec![
@@ -983,6 +1067,73 @@ impl Agent {
             .chat_with_tools_and_messages(messages)
             .await
             .map_err(|e| AgentError::Execution(format!("LLM tool-call failed: {}", e)))?;
+
+        Ok((response, vec![]))
+    }
+
+    /// 🆕 STREAMING FIX: Handle LLM task using streaming callbacks
+    async fn handle_llm_task_stream(
+        &self,
+        task: &Task,
+        callback: Arc<dyn crate::llm::client::StreamCallback>,
+    ) -> Result<(String, Vec<Artifact>), AgentError> {
+        let client = self
+            .llm_client
+            .as_ref()
+            .ok_or_else(|| AgentError::InvalidConfig("LLM client not configured".into()))?;
+
+        // Extract input text (reuse logic from handle_llm_task_with_tools)
+        let input_text = if let Ok(json) = serde_json::from_str::<serde_json::Value>(&task.input) {
+            json.get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or(&task.input)
+                .to_string()
+        } else {
+            task.input.clone()
+        };
+
+        // Build system message with skills prompt
+        let mut system_content = format!(
+            "你是 {}（{}）。请保持友好、专业、有帮助的态度回答问题。",
+            self.config.name, self.config.description
+        );
+
+        // Inject available skills prompt if registry exists
+        if let Some(ref registry) = self.skill_registry {
+            let skills_prompt = skills::build_skills_prompt(registry).await;
+            if !skills_prompt.is_empty() {
+                system_content.push_str("\n\n");
+                system_content.push_str(&skills_prompt);
+                system_content.push_str(
+                    "\n\n在回复之前：扫描 <available_skills> 中的 <description> \
+                     条目。如果恰好有一个技能明显适用：使用 read_skill 工具读取其 \
+                     SKILL.md，然后遵循它。如果多个可能适用：选择最具体的一个，然后读取/遵循它。\
+                     如果没有明显适用的：不要读取任何 \
+                     SKILL.md。约束：永远不要预先读取多个技能；只在选择后读取。",
+                );
+            }
+        }
+
+        // 🆕 FIX: 添加工具调用约束，防止无限循环
+        system_content.push_str(
+            "\n\n[工具调用约束]\n\
+             1. 你最多可以连续调用 5 次工具。如果 5 次后仍未获得所需信息，请直接告诉用户当前无法获取该信息。\n\
+             2. 不要反复调用同一个工具查询相同的内容。\n\
+             3. 如果工具执行失败（如文件不存在、命令报错），不要继续尝试类似的操作，而是基于已有信息回答用户。\n\
+             4. 每次工具调用后，优先基于返回结果给出文本回答，而不是立即调用下一个工具。",
+        );
+
+        // Build messages for LLM
+        let messages = vec![
+            LlmMessage::system(system_content),
+            LlmMessage::user(input_text),
+        ];
+
+        // Use streaming version
+        let response = client
+            .chat_with_tools_stream(messages, callback.as_ref())
+            .await
+            .map_err(|e| AgentError::Execution(format!("LLM streaming failed: {}", e)))?;
 
         Ok((response, vec![]))
     }
@@ -1015,8 +1166,8 @@ impl Agent {
             prompt
         } else {
             format!(
-                "You are acting as the skill '{}'. {}\n\nSkill capabilities:\n{}\n\nExecute \
-                 the following task using this skill persona.",
+                "You are acting as the skill '{}'. {}\n\nSkill capabilities:\n{}\n\nExecute the \
+                 following task using this skill persona.",
                 registered_skill.skill.name,
                 manifest.description,
                 manifest

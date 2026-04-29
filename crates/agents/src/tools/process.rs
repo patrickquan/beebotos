@@ -53,8 +53,8 @@ impl ToolHandler for ProcessTool {
     }
 
     async fn execute(&self, arguments: &str) -> Result<String, String> {
-        let args: serde_json::Value = serde_json::from_str(arguments)
-            .map_err(|e| format!("Invalid arguments: {}", e))?;
+        let args: serde_json::Value =
+            serde_json::from_str(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
 
         let action = args["action"].as_str().ok_or("Missing action")?;
 
@@ -93,10 +93,10 @@ async fn list_processes(pattern: Option<&str>) -> Result<String, String> {
                 let pid = parts[1].trim_matches('"');
                 if let Some(p) = pattern {
                     if name.to_lowercase().contains(&p.to_lowercase()) {
-                        lines.push(format!("{},{}" , pid, name));
+                        lines.push(format!("{},{}", pid, name));
                     }
                 } else {
-                    lines.push(format!("{},{}" , pid, name));
+                    lines.push(format!("{},{}", pid, name));
                 }
             }
         }
@@ -175,10 +175,7 @@ async fn kill_process(pid: u64) -> Result<String, String> {
             .map_err(|e| format!("Failed to run kill: {}", e))?;
 
         if output.status.success() {
-            Ok(format!(
-                "Process {} sent SIGTERM (graceful shutdown).",
-                pid
-            ))
+            Ok(format!("Process {} sent SIGTERM (graceful shutdown).", pid))
         } else {
             // Try SIGKILL
             let output = tokio::process::Command::new("kill")

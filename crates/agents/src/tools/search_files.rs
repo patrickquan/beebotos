@@ -52,8 +52,8 @@ impl ToolHandler for SearchFilesTool {
     }
 
     async fn execute(&self, arguments: &str) -> Result<String, String> {
-        let args: serde_json::Value = serde_json::from_str(arguments)
-            .map_err(|e| format!("Invalid arguments: {}", e))?;
+        let args: serde_json::Value =
+            serde_json::from_str(arguments).map_err(|e| format!("Invalid arguments: {}", e))?;
 
         let query = args["query"].as_str().ok_or("Missing query")?;
         let path = args["path"].as_str().unwrap_or(".");
@@ -72,9 +72,7 @@ impl ToolHandler for SearchFilesTool {
 
             // Check file pattern
             if let Some(pattern) = file_pattern {
-                let name = file_path.file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("");
+                let name = file_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                 if !glob_match(name, pattern) {
                     continue;
                 }
@@ -88,12 +86,7 @@ impl ToolHandler for SearchFilesTool {
             for (line_num, line) in content.lines().enumerate() {
                 if line.contains(query) {
                     let file_name = file_path.display();
-                    results.push(format!(
-                        "{}:{}: {}",
-                        file_name,
-                        line_num + 1,
-                        line.trim()
-                    ));
+                    results.push(format!("{}:{}: {}", file_name, line_num + 1, line.trim()));
                     if results.len() >= 50 {
                         break;
                     }

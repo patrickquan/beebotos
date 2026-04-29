@@ -49,7 +49,8 @@ pub struct GatewayAgentRuntime {
     replanner: Option<Arc<dyn crate::planning::RePlanner>>,
     /// LLM interface for agent execution
     llm_interface: Option<Arc<dyn crate::communication::LLMCallInterface>>,
-    /// 🆕 TOOL-CALLING FIX: LLM provider for building LLMClient with tool support
+    /// 🆕 TOOL-CALLING FIX: LLM provider for building LLMClient with tool
+    /// support
     llm_provider: Option<Arc<dyn crate::llm::LLMProvider>>,
     /// 🟢 P2 FIX: Skill registry for WASM skill execution
     skill_registry: Option<Arc<crate::skills::SkillRegistry>>,
@@ -64,6 +65,69 @@ struct AgentTaskHandle {
     kernel_task_id: Option<u64>,
     /// Agent configuration
     config: AgentConfig,
+}
+
+/// 🆕 STREAMING FIX: Wrapper to bridge gateway-lib TaskStreamCallback to
+/// agents StreamCallback
+struct GatewayStreamCallbackWrapper {
+    inner: tokio::sync::Mutex<Box<dyn beebotos_gateway_lib::TaskStreamCallback>>,
+}
+
+impl GatewayStreamCallbackWrapper {
+    fn new(inner: Box<dyn beebotos_gateway_lib::TaskStreamCallback>) -> Self {
+        Self {
+            inner: tokio::sync::Mutex::new(inner),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::llm::client::StreamCallback for GatewayStreamCallbackWrapper {
+    async fn on_delta(&self, text: &str, delta: Option<&str>) {
+        let guard = self.inner.lock().await;
+        guard.on_delta(text, delta).await;
+    }
+
+    async fn on_tool_start(&self, tool_call_id: &str, name: &str, args: &str) {
+        let guard = self.inner.lock().await;
+        guard.on_tool_start(tool_call_id, name, args).await;
+    }
+
+    async fn on_tool_result(&self, tool_call_id: &str, result: &str) {
+        let guard = self.inner.lock().await;
+        guard.on_tool_result(tool_call_id, result).await;
+    }
+
+    async fn on_tool_error(&self, tool_call_id: &str, error: &str) {
+        let guard = self.inner.lock().await;
+        guard.on_tool_error(tool_call_id, error).await;
+    }
+
+    async fn on_thinking(&self, text: &str) {
+        // Gateway callback doesn't have thinking, map to delta
+        let guard = self.inner.lock().await;
+        guard.on_delta(text, Some(text)).await;
+    }
+
+    async fn on_final(&self, text: &str) {
+        let guard = self.inner.lock().await;
+        guard.on_final(text).await;
+    }
+
+    async fn on_error(&self, error: &str, _error_kind: Option<&str>) {
+        let guard = self.inner.lock().await;
+        guard.on_error(error).await;
+    }
+
+    fn is_aborted(&self) -> bool {
+        // Note: synchronous lock for is_aborted check
+        // This is called frequently during streaming, use try_lock to avoid blocking
+        if let Ok(guard) = self.inner.try_lock() {
+            guard.is_aborted()
+        } else {
+            false
+        }
+    }
 }
 
 impl GatewayAgentRuntime {
@@ -169,7 +233,8 @@ impl GatewayAgentRuntime {
         self
     }
 
-    /// 🆕 TOOL-CALLING FIX: Set LLM provider for building LLMClient with tool support
+    /// 🆕 TOOL-CALLING FIX: Set LLM provider for building LLMClient with tool
+    /// support
     pub fn with_llm_provider(mut self, provider: Arc<dyn crate::llm::LLMProvider>) -> Self {
         self.llm_provider = Some(provider);
         self
@@ -915,6 +980,7 @@ impl AgentRuntime for GatewayAgentRuntime {
         let kernel_request = crate::kernel_integration::KernelTaskRequest {
             task: agent_task,
             result_tx,
+            stream_callback: None,
         };
 
         task_handle
@@ -948,6 +1014,105 @@ impl AgentRuntime for GatewayAgentRuntime {
             }
             Err(e) => {
                 // Record failure metric
+                self.metrics
+                    .record_task_failed(agent_id, &task.task_type, "execution_error");
+
+                Ok(TaskResult {
+                    success: false,
+                    output: serde_json::Value::Null,
+                    execution_time_ms: duration_ms,
+                    error: Some(e.to_string()),
+                })
+            }
+        }
+    }
+
+    /// 🆕 STREAMING FIX: Execute task with streaming callbacks for WebSocket
+    /// delta events
+    async fn execute_task_stream(
+        &self,
+        agent_id: &AgentId,
+        task: TaskConfig,
+        callback: Box<dyn beebotos_gateway_lib::TaskStreamCallback>,
+    ) -> Result<TaskResult> {
+        let task_handle = self
+            .agent_tasks
+            .read()
+            .await
+            .get(agent_id)
+            .cloned()
+            .ok_or_else(|| GatewayError::not_found("agent", agent_id))?;
+
+        // 🟢 P2 FIX: Record task started metric
+        self.metrics.record_task_started(agent_id, &task.task_type);
+        let start_time = std::time::Instant::now();
+
+        // Create task
+        let mut parameters = HashMap::new();
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&task.input.to_string()) {
+            if let Some(session_id) = json.get("session_id").and_then(|v| v.as_str()) {
+                parameters.insert("session_id".to_string(), session_id.to_string());
+            }
+            if let Some(platform) = json.get("platform").and_then(|v| v.as_str()) {
+                parameters.insert("platform".to_string(), platform.to_string());
+            }
+            if let Some(channel_id) = json.get("channel_id").and_then(|v| v.as_str()) {
+                parameters.insert("channel_id".to_string(), channel_id.to_string());
+            }
+            if let Some(user_id) = json.get("user_id").and_then(|v| v.as_str()) {
+                parameters.insert("user_id".to_string(), user_id.to_string());
+            }
+        }
+
+        let agent_task = crate::Task {
+            id: uuid::Uuid::new_v4().to_string(),
+            task_type: self.convert_task_type(&task.task_type),
+            input: task.input.to_string(),
+            parameters,
+        };
+
+        // Create oneshot channel for result
+        let (result_tx, result_rx) = tokio::sync::oneshot::channel();
+
+        // Wrap gateway-lib callback to agents StreamCallback
+        let stream_callback = Arc::new(GatewayStreamCallbackWrapper::new(callback));
+
+        // Send task to agent with streaming callback
+        let kernel_request = crate::kernel_integration::KernelTaskRequest {
+            task: agent_task,
+            result_tx,
+            stream_callback: Some(stream_callback),
+        };
+
+        task_handle
+            .task_sender
+            .send(kernel_request)
+            .map_err(|_| GatewayError::agent("Agent task channel closed".to_string()))?;
+
+        // Wait for result with timeout
+        let timeout = tokio::time::Duration::from_secs(task.timeout_secs);
+        let result = tokio::time::timeout(timeout, result_rx)
+            .await
+            .map_err(|_| GatewayError::agent("Task execution timeout".to_string()))?
+            .map_err(|_| GatewayError::agent("Task result channel closed".to_string()))?;
+
+        // 🟢 P2 FIX: Calculate duration and record completion metric
+        let duration_ms = start_time.elapsed().as_millis() as u64;
+
+        match result {
+            Ok(task_result) => {
+                self.metrics
+                    .record_task_completed(agent_id, &task.task_type, duration_ms);
+
+                Ok(TaskResult {
+                    success: true,
+                    output: serde_json::to_value(&task_result.output)
+                        .unwrap_or(serde_json::Value::Null),
+                    execution_time_ms: duration_ms,
+                    error: None,
+                })
+            }
+            Err(e) => {
                 self.metrics
                     .record_task_failed(agent_id, &task.task_type, "execution_error");
 

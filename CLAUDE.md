@@ -54,6 +54,23 @@ Top-level shell scripts are provided for common dev/run workflows:
 - `beebotos-run.sh` / `beebotos-run.ps1` — service runner
 - `scripts/setup-dev.sh` — dev environment bootstrap (also invoked via `just setup` / `make setup`)
 
+### 重要：Claude 必须使用脚本管理服务
+**编译、启动、停止服务时，必须使用 `beebotos-dev.sh`（Linux/macOS）或 `beebotos-run.ps1`（Windows）脚本，禁止手动调用 `cargo build`、`wasm-pack` 等命令。**
+
+常用命令：
+```bash
+./beebotos-dev.sh build web        # 构建 web 前端（含 wasm-pack + cargo build）
+./beebotos-dev.sh build gateway    # 构建 gateway
+./beebotos-dev.sh start web        # 启动 web 服务（端口 8090）
+./beebotos-dev.sh start gateway    # 启动 gateway（端口 8000）
+./beebotos-dev.sh stop web         # 停止 web 服务
+./beebotos-dev.sh restart web      # 重启 web 服务
+./beebotos-dev.sh status           # 查看所有服务状态
+./beebotos-dev.sh menu             # 交互式菜单
+```
+
+支持的服务：`gateway`（8000）、`web`（8090）、`beehub`（8080）、`cli`
+
 ## Workspace Structure
 
 ### Crates (in `crates/`)
