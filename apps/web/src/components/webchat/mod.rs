@@ -12,7 +12,7 @@ pub mod tool_card;
 pub mod usage_panel;
 
 pub use message_input::MessageInput;
-pub use message_item::MessageItem;
+pub use message_item::{MessageItem, ReadingIndicator, StreamingMessageItem};
 pub use message_list::MessageList;
 pub use session_item::SessionItem;
 pub use session_list::SessionList;

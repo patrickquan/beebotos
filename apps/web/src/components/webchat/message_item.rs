@@ -79,6 +79,27 @@ pub fn StreamingMessageItem(#[prop(into)] content: Signal<String>) -> impl IntoV
     }
 }
 
+/// 阅读/思考指示器（流式传输开始但内容为空时显示）
+#[component]
+pub fn ReadingIndicator(#[prop(optional)] label: Option<String>) -> impl IntoView {
+    let label_text = label.unwrap_or_else(|| "思考中".to_string());
+    view! {
+        <div class="message assistant">
+            <div class="message-avatar">{"🤖"}</div>
+            <div class="message-content-wrapper">
+                <div class="reading-indicator">
+                    <div class="reading-indicator__dots">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                    <span class="reading-indicator__label">{label_text}</span>
+                </div>
+            </div>
+        </div>
+    }
+}
+
 fn format_timestamp(timestamp: &str) -> String {
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(timestamp) {
         let local = dt.with_timezone(&chrono::Local);

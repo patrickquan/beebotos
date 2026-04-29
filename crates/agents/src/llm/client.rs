@@ -423,34 +423,36 @@ impl LLMClient {
         let mut results = Vec::with_capacity(tool_calls.len());
 
         for tool_call in tool_calls {
+            let name = tool_call.function.name();
+            let id = tool_call.id();
             tracing::info!(
                 "Executing tool '{}' with {} bytes of arguments",
-                tool_call.function.name,
+                name,
                 tool_call.function.arguments.len()
             );
-            if let Some(handler) = tools.get(&tool_call.function.name) {
+            if let Some(handler) = tools.get(name) {
                 match handler.execute(&tool_call.function.arguments).await {
                     Ok(result) => {
                         results.push(ToolResult {
-                            tool_call_id: tool_call.id.clone(),
+                            tool_call_id: id.to_string(),
                             content: result,
                         });
                     }
                     Err(e) => {
                         warn!(
                             "Tool '{}' execution failed: {} (args: {})",
-                            tool_call.function.name, e, tool_call.function.arguments
+                            name, e, tool_call.function.arguments
                         );
                         results.push(ToolResult {
-                            tool_call_id: tool_call.id.clone(),
+                            tool_call_id: id.to_string(),
                             content: format!("Error: {}", e),
                         });
                     }
                 }
             } else {
                 results.push(ToolResult {
-                    tool_call_id: tool_call.id.clone(),
-                    content: format!("Error: Tool '{}' not found", tool_call.function.name),
+                    tool_call_id: id.to_string(),
+                    content: format!("Error: Tool '{}' not found", name),
                 });
             }
         }
@@ -557,7 +559,7 @@ impl LLMClient {
     /// 3. If text response: return it
     /// 4. Max 10 iterations to prevent infinite loops
     async fn run_tool_loop(&self, mut messages: Vec<Message>) -> LLMResult<String> {
-        const MAX_ITERATIONS: usize = 10;
+        const MAX_ITERATIONS: usize = 20;
 
         for iteration in 0..MAX_ITERATIONS {
             match self.execute_once_with_tools(messages.clone()).await? {
@@ -658,7 +660,7 @@ impl LLMClient {
         mut messages: Vec<Message>,
         callback: &dyn StreamCallback,
     ) -> LLMResult<String> {
-        const MAX_ITERATIONS: usize = 10;
+        const MAX_ITERATIONS: usize = 20;
 
         for _iteration in 0..MAX_ITERATIONS {
             if callback.is_aborted() {
@@ -687,7 +689,28 @@ impl LLMClient {
             let mut full_response = String::new();
             let mut pending_tool_calls: Vec<ToolCall> = Vec::new();
 
-            while let Some(chunk) = stream.recv().await {
+            // 🆕 FIX: 为 stream.recv() 添加超时，防止 SSE 流无限卡住
+            let stream_timeout = tokio::time::Duration::from_secs(30);
+
+            loop {
+                let chunk = match tokio::time::timeout(stream_timeout, stream.recv()).await {
+                    Ok(Some(chunk)) => chunk,
+                    Ok(None) => {
+                        tracing::info!("[TOOL-LOOP] SSE stream ended normally");
+                        break;
+                    }
+                    Err(_) => {
+                        tracing::warn!(
+                            "[TOOL-LOOP] SSE stream recv timeout after {:?}, breaking loop. \
+                             pending_tool_calls={}, full_response_len={}",
+                            stream_timeout,
+                            pending_tool_calls.len(),
+                            full_response.len()
+                        );
+                        break;
+                    }
+                };
+
                 if callback.is_aborted() {
                     return Err(LLMError::Provider("Aborted".to_string()));
                 }
@@ -699,18 +722,51 @@ impl LLMClient {
                         callback.on_delta(&full_response, Some(&content)).await;
                     }
 
-                    // Collect tool calls (handle incremental arguments)
+                    // 🆕 FIX: 使用 index 匹配增量 tool_call chunk
+                    // 增量 SSE chunk 结构：
+                    //   第一个 chunk: {index: 0, id: "call_xxx", type: "function", function: {name: "...", arguments: ""}}
+                    //   后续 chunk:  {index: 0, function: {arguments: "..."}}  (无 id, 无 name)
                     if let Some(calls) = choice.delta.tool_calls {
                         for call in calls {
-                            if let Some(existing) =
-                                pending_tool_calls.iter_mut().find(|c| c.id == call.id)
-                            {
-                                existing
-                                    .function
-                                    .arguments
-                                    .push_str(&call.function.arguments);
+                            if let Some(index) = call.index {
+                                // 使用 index 匹配（流式增量 provider，如 Moonshot/OpenAI）
+                                if let Some(existing) = pending_tool_calls
+                                    .iter_mut()
+                                    .find(|c| c.index == Some(index))
+                                {
+                                    // 增量 chunk：追加 arguments
+                                    existing.function.arguments.push_str(&call.function.arguments);
+                                    // 回填第一个 chunk 中可能缺失的字段
+                                    if existing.id.is_none() && call.id.is_some() {
+                                        existing.id = call.id.clone();
+                                    }
+                                    if existing.function.name.is_none()
+                                        && call.function.name.is_some()
+                                    {
+                                        existing.function.name = call.function.name.clone();
+                                    }
+                                    if existing.r#type.is_none() && call.r#type.is_some() {
+                                        existing.r#type = call.r#type.clone();
+                                    }
+                                } else {
+                                    // 新的 tool call（第一个 chunk）
+                                    pending_tool_calls.push(call);
+                                }
+                            } else if let Some(ref id) = call.id {
+                                // 备用：使用 id 匹配（非增量 provider）
+                                if let Some(existing) =
+                                    pending_tool_calls.iter_mut().find(|c| c.id.as_ref() == Some(id))
+                                {
+                                    existing.function.arguments.push_str(&call.function.arguments);
+                                } else {
+                                    pending_tool_calls.push(call);
+                                }
                             } else {
-                                pending_tool_calls.push(call);
+                                // 无法匹配，丢弃此 chunk
+                                tracing::warn!(
+                                    "[TOOL-LOOP] Cannot match tool call chunk without index or id: {:?}",
+                                    call
+                                );
                             }
                         }
                     }
@@ -720,8 +776,37 @@ impl LLMClient {
                         match reason.as_str() {
                             "tool_calls" => {
                                 callback.on_final(&full_response).await;
+
+                                // 🆕 FIX: 过滤掉不完整的 tool call，只执行完整的
+                                let complete_tool_calls: Vec<_> = pending_tool_calls
+                                    .iter()
+                                    .filter(|c| c.is_complete())
+                                    .cloned()
+                                    .collect();
+                                let incomplete_count =
+                                    pending_tool_calls.len() - complete_tool_calls.len();
+                                if incomplete_count > 0 {
+                                    warn!(
+                                        "[TOOL-LOOP] Filtered out {} incomplete tool calls, executing {}/{}",
+                                        incomplete_count,
+                                        complete_tool_calls.len(),
+                                        pending_tool_calls.len()
+                                    );
+                                }
+                                tracing::info!(
+                                    "[TOOL-LOOP] Executing {} tool calls: {:?}",
+                                    complete_tool_calls.len(),
+                                    complete_tool_calls
+                                        .iter()
+                                        .map(|c| format!(
+                                            "{}:{}",
+                                            c.function.name(),
+                                            c.id()
+                                        ))
+                                        .collect::<Vec<_>>()
+                                );
                                 let tool_results = self
-                                    .execute_tool_calls_stream(&pending_tool_calls, callback)
+                                    .execute_tool_calls_stream(&complete_tool_calls, callback)
                                     .await?;
 
                                 messages.push(Message::assistant_with_tool_calls(
@@ -765,32 +850,65 @@ impl LLMClient {
         let mut results = Vec::new();
 
         for call in tool_calls {
+            let id = call.id();
+            let name = call.function.name();
+
+            // 🆕 FIX: 跳过不完整的 tool call（缺少 id 或 name）
+            if !call.is_complete() {
+                warn!(
+                    "[TOOL-CALL] Skipping incomplete tool call: id={:?}, name={:?}",
+                    call.id, call.function.name
+                );
+                callback
+                    .on_tool_error(id, "Tool call is incomplete (missing id or name)")
+                    .await;
+                results.push(ToolResult {
+                    tool_call_id: id.to_string(),
+                    content: "Error: Tool call is incomplete (missing id or name)".to_string(),
+                });
+                continue;
+            }
+
+            // 🆕 FIX: 跳过参数为空的 tool call，避免 JSON 解析失败导致无限循环
+            if call.function.arguments.trim().is_empty() {
+                warn!(
+                    "[TOOL-CALL] Skipping tool call {} with empty arguments",
+                    id
+                );
+                callback.on_tool_error(id, "Tool call arguments are empty").await;
+                results.push(ToolResult {
+                    tool_call_id: id.to_string(),
+                    content: "Error: Tool call arguments are empty".to_string(),
+                });
+                continue;
+            }
+
             callback
-                .on_tool_start(&call.id, &call.function.name, &call.function.arguments)
+                .on_tool_start(id, name, &call.function.arguments)
                 .await;
 
-            if let Some(handler) = tools.get(&call.function.name) {
+            if let Some(handler) = tools.get(name) {
                 match handler.execute(&call.function.arguments).await {
                     Ok(result) => {
-                        callback.on_tool_result(&call.id, &result).await;
+                        callback.on_tool_result(id, &result).await;
                         results.push(ToolResult {
-                            tool_call_id: call.id.clone(),
+                            tool_call_id: id.to_string(),
                             content: result,
                         });
                     }
                     Err(err) => {
-                        callback.on_tool_error(&call.id, &err).await;
+                        callback.on_tool_error(id, &err).await;
                         results.push(ToolResult {
-                            tool_call_id: call.id.clone(),
+                            tool_call_id: id.to_string(),
                             content: format!("Error: {}", err),
                         });
                     }
                 }
             } else {
-                let err = format!("Tool '{}' not found", call.function.name);
-                callback.on_tool_error(&call.id, &err).await;
+                let err = format!("Tool '{}' not found", name);
+                callback.on_tool_error(id, &err).await;
                 results.push(ToolResult {
-                    tool_call_id: call.id.clone(),
+                    tool_call_id: id.to_string(),
                     content: err,
                 });
             }

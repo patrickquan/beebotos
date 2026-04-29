@@ -509,9 +509,84 @@ impl MessageProcessor {
                     message: format!("Failed to add assistant message: {}", e),
                     correlation_id: Uuid::new_v4().to_string(),
                 })?;
-            // 发送回复
-            self.send_reply(platform, channel_id, &message, &answer)
-                .await?;
+
+            // WebChat 平台使用新版 chat event 系统发送回复
+            if platform == PlatformType::WebChat
+                && self.chat_event_handler.is_some()
+                && self.ws_connections.is_some()
+            {
+                let run_id = Uuid::new_v4().to_string();
+                let session_key = format!("user:{}", db_session_id);
+                let chat_handler = self.chat_event_handler.as_ref().unwrap();
+                let ws_conns = self.ws_connections.as_ref().unwrap();
+
+                // 构造 broadcast 函数
+                let ws_conns_clone = Arc::clone(ws_conns);
+                let session_key_clone = session_key.clone();
+                let broadcast_fn = move |event: String, payload: serde_json::Value, _opts: Option<crate::websocket::broadcast::BroadcastOptions>| {
+                    let ws_conns = ws_conns_clone.clone();
+                    let session_key = session_key_clone.clone();
+                    tokio::spawn(async move {
+                        let targets: Vec<(String, tokio::sync::mpsc::UnboundedSender<String>)> = {
+                            let conns = ws_conns.lock().await;
+                            conns
+                                .iter()
+                                .filter(|c| c.subscribed_sessions.contains(&session_key))
+                                .map(|c| (c.conn_id.clone(), c.send_tx.clone()))
+                                .collect()
+                        };
+                        let mut sent = 0;
+                        for (conn_id, send_tx) in targets {
+                            let ws_msg = serde_json::json!({
+                                "type": "event",
+                                "event": event,
+                                "payload": payload,
+                            });
+                            match send_tx.send(ws_msg.to_string()) {
+                                Ok(_) => sent += 1,
+                                Err(e) => {
+                                    tracing::warn!("[FAST-PATH] dead conn={}: {}", conn_id, e);
+                                }
+                            }
+                        }
+                        tracing::info!("[FAST-PATH] event={} sent={}", event, sent);
+                    });
+                };
+
+                // 发送 delta（全量文本）
+                chat_handler
+                    .emit_chat_delta(
+                        &session_key,
+                        &run_id,
+                        &run_id,
+                        1,
+                        &answer,
+                        None,
+                        &broadcast_fn,
+                    )
+                    .await;
+
+                // 发送 final 事件
+                chat_handler
+                    .emit_chat_final(
+                        &session_key,
+                        &run_id,
+                        &run_id,
+                        2,
+                        "done",
+                        None,
+                        None,
+                        None,
+                        &broadcast_fn,
+                    )
+                    .await;
+
+                info!("✅ Fast path 回复已通过 chat event 发送");
+            } else {
+                // 非 WebChat 平台，使用旧版 channel send
+                self.send_reply(platform, channel_id, &message, &answer)
+                    .await?;
+            }
             return Ok(());
         }
 

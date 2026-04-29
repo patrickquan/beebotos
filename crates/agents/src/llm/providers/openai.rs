@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use tokio::sync::mpsc;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, warn};
 
 use crate::llm::http_client::{LLMHttpClient, OpenAIRequestBuilder, ProviderConfig};
 use crate::llm::traits::*;
@@ -253,7 +253,7 @@ impl LLMProvider for OpenAIProvider {
                                         }
                                     }
                                     Err(e) => {
-                                        trace!("Failed to parse chunk: {}", e);
+                                        warn!("[SSE-PARSE] Failed to parse chunk: {} | data: {}", e, data);
                                     }
                                 }
                             }
