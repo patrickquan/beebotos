@@ -230,12 +230,22 @@ impl KernelAgentConfig {
 }
 
 /// Task request sent to the kernel task
-#[derive(Debug)]
 pub struct KernelTaskRequest {
     /// Task to execute
     pub task: Task,
     /// Channel to send result back
     pub result_tx: oneshot::Sender<Result<TaskResult>>,
+    /// 🆕 STREAMING FIX: Optional streaming callback for real-time delta events
+    pub stream_callback: Option<Arc<dyn crate::llm::client::StreamCallback>>,
+}
+
+impl std::fmt::Debug for KernelTaskRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KernelTaskRequest")
+            .field("task", &self.task)
+            .field("stream_callback", &self.stream_callback.is_some())
+            .finish_non_exhaustive()
+    }
 }
 
 /// Agent kernel task that runs inside the kernel sandbox
@@ -368,7 +378,11 @@ impl AgentKernelTask {
     ///
     /// 🟢 P1 FIX: Capability verification before task execution
     async fn handle_task_request(&self, request: KernelTaskRequest) {
-        let KernelTaskRequest { task, result_tx } = request;
+        let KernelTaskRequest {
+            task,
+            result_tx,
+            stream_callback,
+        } = request;
 
         info!(
             "Agent {} executing task {} in kernel sandbox",
@@ -396,10 +410,14 @@ impl AgentKernelTask {
         })
         .await;
 
-        // Execute task
+        // 🆕 STREAMING FIX: Use execute_task_stream when callback is provided
         let result = {
             let mut agent = self.agent.write().await;
-            agent.execute_task(task).await
+            if let Some(callback) = stream_callback {
+                agent.execute_task_stream(task, callback).await
+            } else {
+                agent.execute_task(task).await
+            }
         };
 
         // Handle result

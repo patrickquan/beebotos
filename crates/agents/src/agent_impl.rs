@@ -198,7 +198,7 @@ impl Agent {
             .await;
 
         // Register skill tools if registry is available
-        if let Some(registry) = skill_registry {
+        if let Some(ref registry) = self.skill_registry {
             client
                 .register_tool(
                     "list_skills",
@@ -2225,6 +2225,75 @@ impl Agent {
         };
 
         Ok((result, vec![]))
+    }
+
+    /// 🆕 STREAMING FIX: Handle LLM task with streaming callbacks
+    async fn handle_llm_task_stream(
+        &self,
+        task: &Task,
+        callback: Arc<dyn crate::llm::client::StreamCallback>,
+    ) -> Result<(String, Vec<Artifact>), AgentError> {
+        let client = self
+            .llm_client
+            .as_ref()
+            .ok_or_else(|| AgentError::InvalidConfig("LLM client not configured".into()))?;
+
+        // 提取输入文本
+        let input_text =
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&task.input) {
+                json.get("message")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or(&task.input)
+                    .to_string()
+            } else {
+                task.input.clone()
+            };
+
+        // 构建带技能提示的系统消息
+        let mut system_content = format!(
+            "你是 {}（{}）。请保持友好、专业、有帮助的态度回答问题。",
+            self.config.name, self.config.description
+        );
+
+        // 注入可用技能提示
+        if let Some(ref registry) = self.skill_registry {
+            let skills_prompt = skills::build_skills_prompt(registry).await;
+            if !skills_prompt.is_empty() {
+                system_content.push_str("\n\n");
+                system_content.push_str(&skills_prompt);
+                system_content.push_str(
+                    "\n\n## Skills (mandatory)\n\
+                     Before replying: scan <available_skills> <description> entries.\n\
+                     - If exactly one skill clearly applies: read its SKILL.md at <location> with `read_file`, then follow it.\n\
+                     - If multiple could apply: choose the most specific one, then read/follow it.\n\
+                     - If none clearly apply: do not read any SKILL.md.\n\
+                     Constraints: never read more than one skill up front; only read after selecting."
+                );
+            }
+        }
+
+        // 添加工具调用约束
+        system_content.push_str(
+            "\n\n[工具调用约束]\n\
+             1. 你最多可以连续调用 5 次工具。如果 5 次后仍未获得所需信息，请直接告诉用户当前无法获取该信息。\n\
+             2. 不要反复调用同一个工具查询相同的内容。\n\
+             3. 如果工具执行失败（如文件不存在、命令报错），不要继续尝试类似的操作，而是基于已有信息回答用户。\n\
+             4. 每次工具调用后，优先基于返回结果给出文本回答，而不是立即调用下一个工具。",
+        );
+
+        // 构建消息列表
+        let messages = vec![
+            LlmMessage::system(system_content),
+            LlmMessage::user(input_text),
+        ];
+
+        // 使用流式版本
+        let response = client
+            .chat_with_tools_stream(messages, callback.as_ref())
+            .await
+            .map_err(|e| AgentError::Execution(format!("LLM streaming failed: {}", e)))?;
+
+        Ok((response, vec![]))
     }
 }
 

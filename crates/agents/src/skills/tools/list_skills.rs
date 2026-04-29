@@ -64,10 +64,10 @@ impl ToolHandler for ListSkillsTool {
             .into_iter()
             .map(|s| {
                 serde_json::json!({
-                    "id": s.skill.id,
+                    "id": s.skill.name,
                     "name": s.skill.name,
                     "description": s.skill.manifest.description,
-                    "version": s.skill.version.to_string(),
+                    "version": s.skill.manifest.version.to_string(),
                     "category": s.category,
                     "tags": s.tags,
                     "usage_count": s.usage_count,

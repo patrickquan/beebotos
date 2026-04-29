@@ -11,7 +11,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::skills::loader::{LoadedSkill, SkillManifest};
+use crate::skills::loader::{
+    LoadedSkill, OpenClawMetadata, SkillInvocationPolicy, SkillManifest, SkillResources,
+    SkillSource,
+};
 use crate::skills::registry::{SkillRegistry, Version};
 
 /// Parse a markdown file into structured sections.
@@ -368,26 +371,34 @@ pub async fn load_builtin_skills(registry: &Arc<SkillRegistry>) {
                 .and_then(|fm| fm.get("license").cloned())
                 .unwrap_or_else(|| "MIT".to_string());
 
+            let skill_dir = path.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
             let skill = LoadedSkill {
-                id: skill_id.clone(),
-                name: skill_name.clone(),
-                version: version.clone(),
+                name: skill_id.clone(),
+                description: description.clone(),
                 skill_md_path: path.clone(),
                 manifest: SkillManifest {
-                    id: skill_id.clone(),
                     name: skill_name.clone(),
-                    version,
                     description: description.clone(),
+                    version,
                     author,
-                    capabilities: if capabilities.is_empty() {
-                        tags.clone()
-                    } else {
-                        capabilities
-                    },
                     license,
-                    prompt_template,
-                    examples,
+                    user_invocable: true,
+                    disable_model_invocation: false,
+                    command_dispatch: None,
+                    command_tool: None,
+                    slash_commands: Vec::new(),
+                    metadata: OpenClawMetadata::default(),
                 },
+                skill_dir: skill_dir.clone(),
+                source: SkillSource::Workspace,
+                resource_dirs: SkillResources {
+                    has_scripts: skill_dir.join("scripts").exists(),
+                    has_references: skill_dir.join("references").exists(),
+                    has_assets: skill_dir.join("assets").exists(),
+                },
+                install_specs: Vec::new(),
+                dependencies_satisfied: true,
+                invocation: SkillInvocationPolicy::default(),
             };
 
             let category = category_dir

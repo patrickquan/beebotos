@@ -1,3 +1,5 @@
-// 旧 Skill 工具已删除，保留模块占位以兼容导入。
-// Phase 1 重构：read_skill / list_skills 工具已移除，
-// 改为 prompt-driven 模式，由系统提示中的 <available_skills> XML 引导 LLM 使用 read_file 工具。
+// Skills 相关工具模块
+// 提供 read_skill 和 list_skills 工具，供 Agent 在 tool-calling 模式下使用
+
+pub mod list_skills;
+pub mod read_skill;
