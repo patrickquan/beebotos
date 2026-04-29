@@ -188,9 +188,6 @@ impl GatewayAgentRuntime {
         // 🟢 P2 FIX: Initialize skill registry (skills can be registered at runtime via
         // API)
         let skill_registry = Arc::new(crate::skills::SkillRegistry::new());
-        // 🆕 FIX: Auto-load markdown skills from skills/ directory so registry is never
-        // empty.
-        crate::skills::builtin_loader::load_builtin_skills(&skill_registry).await;
         info!("✅ Skill registry initialized");
 
         let runtime = Self {
@@ -404,6 +401,11 @@ impl GatewayAgentRuntime {
         // 🆕 TOOL-CALLING FIX: Pass LLM provider for tool-calling support
         if let Some(ref provider) = self.llm_provider {
             builder = builder.with_llm_provider(provider.clone());
+        }
+
+        // 🟢 P2 FIX: Attach skill registry to recovered agent
+        if let Some(ref registry) = self.skill_registry {
+            builder = builder.with_skill_registry(registry.clone());
         }
 
         let (task_id, task_sender) = builder

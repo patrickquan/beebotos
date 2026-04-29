@@ -252,7 +252,7 @@ impl MessageProcessor {
             })?;
 
         // 5.5 Memory 检索
-        let (memory_context, _direct_answer) = self.build_memory_context(&content, &None).await;
+        let (memory_context, _direct_answer) = self.build_memory_context(&content).await;
 
         // 6. 调用 LLM（注入记忆上下文）
         let llm_response = self
@@ -489,11 +489,8 @@ impl MessageProcessor {
             })?;
 
         // 6.5 Memory 检索
-        // 🆕 FIX: 先匹配 skill，统一在 build_memory_context 内注入 skill prompt
-        // 并控制总预算
-        let skill_match = self.try_match_skill(&content).await;
         let (memory_context, direct_answer) =
-            self.build_memory_context(&content, &skill_match).await;
+            self.build_memory_context(&content).await;
 
         // 🟢 P2 FIX: Memory 精确匹配直接返回，跳过 LLM
         if let Some(answer) = direct_answer {
@@ -590,55 +587,8 @@ impl MessageProcessor {
             return Ok(());
         }
 
-        // 7. 处理 Skill planning 判断
-        let mut has_skill_plan = false;
-        if let Some((ref skill_name, _, _)) = skill_match {
-            // 复杂 skill 强制触发 agent 端 planning
-            // 🆕 FIX: 结合 skill 类型与 query 复杂度综合判断是否启用 planning
-            let skill_lower = skill_name.to_lowercase();
-            let is_generative_skill = skill_lower.contains("travel")
-                || skill_lower.contains("planner")
-                || skill_lower.contains("writer")
-                || skill_lower.contains("creator")
-                || skill_lower.contains("story")
-                || skill_lower.contains("email")
-                || skill_lower.contains("master")
-                || skill_lower.contains("game");
-            let is_analytical_skill = skill_lower.contains("developer")
-                || skill_lower.contains("analyst")
-                || skill_lower.contains("advisor")
-                || skill_lower.contains("manager")
-                || skill_lower.contains("auditor")
-                || skill_lower.contains("researcher");
-
-            let query_complexity = Self::estimate_query_complexity(&content);
-            let is_high_complexity = query_complexity == QueryComplexity::High;
-
-            if is_analytical_skill && !is_generative_skill {
-                has_skill_plan = true;
-                info!(
-                    "🎯 Analytical skill matched, will inject plan=true for '{}'",
-                    skill_name
-                );
-            } else if is_generative_skill && is_high_complexity {
-                // 🆕 FIX: 高复杂度 generative skill 也启用 planning
-                has_skill_plan = true;
-                info!(
-                    "🎯 Generative skill '{}' matched with high complexity query, forcing \
-                     plan=true",
-                    skill_name
-                );
-            } else if is_generative_skill {
-                info!(
-                    "🎯 Generative skill matched, skipping plan=true for '{}' (single-shot \
-                     generation preferred)",
-                    skill_name
-                );
-            }
-        }
-
-        // 8. 构造 TaskConfig
-        let mut task_input = serde_json::json!({
+        // 7. 构造 TaskConfig
+        let task_input = serde_json::json!({
             "message": content,
             "history": history.iter().map(|m| serde_json::json!({"role": m.role, "content": m.content})).collect::<Vec<_>>(),
             "images": images.iter().map(|img| format!("data:{};base64,{},", img.mime_type, img.data)).collect::<Vec<_>>(),
@@ -649,21 +599,6 @@ impl MessageProcessor {
             "metadata": message.metadata,
             "memory_context": memory_context,
         });
-        if let Some((skill_name, skill_desc, skill_prompt)) = skill_match {
-            if let Some(obj) = task_input.as_object_mut() {
-                obj.insert(
-                    "skill_hint".to_string(),
-                    serde_json::json!({
-                        "name": skill_name,
-                        "description": skill_desc,
-                        "prompt_template": skill_prompt,
-                    }),
-                );
-                if has_skill_plan {
-                    obj.insert("plan".to_string(), serde_json::json!("true"));
-                }
-            }
-        }
 
         let task = gateway::TaskConfig {
             task_type: "llm_chat".to_string(),
@@ -1057,172 +992,6 @@ impl MessageProcessor {
 
     /// 🆕 FIX: 尝试匹配 Skill，返回最佳匹配的 skill hint (name, description,
     /// prompt_template) 支持 domain keyword 映射 + registry 语义搜索 + name
-    /// 子串匹配
-    async fn try_match_skill(&self, content: &str) -> Option<(String, String, String)> {
-        // 查询太短不应触发 skill 匹配
-        if content.chars().count() < 4 {
-            return None;
-        }
-        let registry = self.skill_registry.as_ref()?;
-        let query_lower = content.to_lowercase();
-
-        // 1. Domain keyword → skill ID 快速映射（中文 + 英文）
-        let domain_keywords: &[(&[&str], &str)] = &[
-            (
-                &[
-                    "travel",
-                    "tour",
-                    "trip",
-                    "itinerary",
-                    "旅游",
-                    "旅行",
-                    "行程",
-                    "攻略",
-                    "景点",
-                    "酒店",
-                    "规划",
-                    "计划",
-                ],
-                "travel_planner",
-            ),
-            (
-                &[
-                    "code", "program", "develop", "debug", "coding", "编程", "代码", "开发",
-                    "python",
-                ],
-                "python_developer",
-            ),
-            (&["rust", "cargo"], "rust_developer"),
-            (
-                &["contract", "solidity", "smart contract", "合约", "区块链"],
-                "solidity_developer",
-            ),
-            (&["write", "email", "draft", "邮件", "写信"], "email_writer"),
-            (
-                &["story", "novel", "fiction", "write", "故事", "小说"],
-                "story_writer",
-            ),
-            (&["game", "gaming", "游戏", "玩家"], "game_master"),
-            (
-                &["data", "analyze", "analysis", "数据", "分析", "统计"],
-                "data_analyst",
-            ),
-            (
-                &["image", "photo", "picture", "图", "照片"],
-                "image_analyst",
-            ),
-            (
-                &["calendar", "schedule", "meeting", "日历", "会议", "安排"],
-                "calendar_assistant",
-            ),
-            (&["task", "todo", "plan", "任务", "待办"], "task_manager"),
-            (
-                &["defi", "yield", "liquidity", "farm", "挖矿", "流动性"],
-                "yield_farmer",
-            ),
-            (&["nft", "mint", "token", "数字藏品"], "nft_minter"),
-            (
-                &["health", "medical", "doctor", "健康", "医疗", "医生"],
-                "health_advisor",
-            ),
-            (
-                &["learn", "study", "tutor", "lesson", "学习", "课程", "辅导"],
-                "tutor",
-            ),
-            (
-                &["research", "paper", "survey", "研究", "论文", "调查"],
-                "code_researcher",
-            ),
-            (
-                &[
-                    "dao",
-                    "governance",
-                    "proposal",
-                    "vote",
-                    "治理",
-                    "提案",
-                    "投票",
-                ],
-                "governance_analyst",
-            ),
-            (
-                &[
-                    "finance",
-                    "portfolio",
-                    "invest",
-                    "理财",
-                    "投资",
-                    "组合",
-                    "黄金",
-                    "价格",
-                ],
-                "portfolio_manager",
-            ),
-            (
-                &["social", "community", "content", "社媒", "社群", "内容"],
-                "content_creator",
-            ),
-            (
-                &["security", "audit", "vulnerability", "安全", "审计", "漏洞"],
-                "auditor",
-            ),
-            (
-                &["weather", "forecast", "天气", "预报", "降雨", "温度"],
-                "weather_assistant",
-            ),
-        ];
-
-        for (keywords, skill_id) in domain_keywords {
-            if keywords.iter().any(|kw| query_lower.contains(kw)) {
-                if let Some(skill) = registry.get(skill_id).await {
-                    if skill.enabled {
-                        info!(
-                            "🎯 Skill domain matched: '{}' for query '{}'",
-                            skill_id,
-                            content.chars().take(40).collect::<String>()
-                        );
-                        return Some((
-                            skill.skill.name.clone(),
-                            skill.skill.manifest.description.clone(),
-                            skill.skill.manifest.prompt_template.clone(),
-                        ));
-                    }
-                }
-            }
-        }
-
-        // 2. Registry semantic search fallback
-        let results = registry.search(content).await;
-        if results.is_empty() {
-            return None;
-        }
-        let best = &results[0];
-        let name_lower = best.skill.name.to_lowercase();
-        // name 子串强匹配
-        let is_strong_match =
-            name_lower.contains(&query_lower) || query_lower.contains(&name_lower);
-        if is_strong_match {
-            info!(
-                "🎯 Skill matched: '{}' for query '{}'",
-                best.skill.id,
-                content.chars().take(40).collect::<String>()
-            );
-            let hint = (
-                best.skill.name.clone(),
-                best.skill.manifest.description.clone(),
-                best.skill.manifest.prompt_template.clone(),
-            );
-            Some(hint)
-        } else {
-            debug!(
-                "Skill match too weak: '{}' for query '{}'",
-                best.skill.id,
-                content.chars().take(40).collect::<String>()
-            );
-            None
-        }
-    }
-
     /// P2 FIX: 提取共享的 Memory 搜索逻辑，消除双重搜索
     ///
     /// 🟢 P2 FIX: 返回 (memory_context, direct_answer)。如果 Memory
@@ -1232,7 +1001,6 @@ impl MessageProcessor {
     async fn build_memory_context(
         &self,
         content: &str,
-        skill_match: &Option<(String, String, String)>,
     ) -> (String, Option<String>) {
         let mut memory_context = String::new();
         let mut direct_answer: Option<String> = None;
@@ -1268,18 +1036,7 @@ impl MessageProcessor {
         } else {
             (600, 800)
         };
-        // 🆕 FIX: 当外部注入了大段 skill prompt 等额外 context 时，相应缩减 dynamic
-        // memory budget
-        let extra_context_len = skill_match.as_ref().map_or(0, |(name, _, prompt)| {
-            let wrapper_len = format!(
-                "\n\n[系统提示：你当前正在使用 {} 技能处理此请求。请遵循以下专业指引]\n",
-                name
-            )
-            .chars()
-            .count();
-            prompt.chars().count() + wrapper_len
-        });
-        let adjusted_dynamic_budget = dynamic_budget.saturating_sub(extra_context_len).max(150);
+        let adjusted_dynamic_budget = dynamic_budget;
 
         // 🆕 FIX: 前缀文本长度预扣，确保各段总长度（含前缀）不超预算
         let system_prefix =
@@ -1589,22 +1346,6 @@ impl MessageProcessor {
                 Err(e) => {
                     warn!("Memory search failed: {}", e);
                 }
-            }
-        }
-
-        // 🆕 FIX: 统一注入 skill prompt（无论 memory_system 是否存在）
-        if let Some((ref skill_name, _, ref skill_prompt)) = skill_match {
-            if !skill_prompt.is_empty() {
-                let injection = format!(
-                    "\n\n[系统提示：你当前正在使用 {} 技能处理此请求。请遵循以下专业指引]\n{}",
-                    skill_name, skill_prompt
-                );
-                memory_context.push_str(&injection);
-                info!(
-                    "🎯 Skill prompt injected ({} chars) for '{}'",
-                    skill_prompt.chars().count(),
-                    skill_name
-                );
             }
         }
 

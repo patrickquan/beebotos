@@ -172,10 +172,7 @@ impl Agent {
     }
 
     /// 🆕 TOOL-CALLING FIX: Register all built-in tools on the LLM client
-    pub async fn register_tools(
-        &self,
-        skill_registry: Option<Arc<skills::SkillRegistry>>,
-    ) -> Result<(), AgentError> {
+    pub async fn register_tools(&self) -> Result<(), AgentError> {
         let Some(ref client) = self.llm_client else {
             return Ok(());
         };
@@ -482,8 +479,7 @@ impl Agent {
         let task_id = task.id.clone();
 
         let result = match &task.task_type {
-            TaskType::LlmChat => self.handle_llm_task(&task).await,
-            TaskType::SkillExecution => self.handle_skill_task(&task).await,
+            TaskType::LlmChat | TaskType::SkillExecution => self.handle_llm_task(&task).await,
             TaskType::McpTool => self.handle_mcp_task(&task).await,
             TaskType::FileProcessing => self.handle_file_task(&task).await,
             TaskType::A2aSend => self.handle_a2a_task(&task).await,
@@ -586,17 +582,14 @@ impl Agent {
 
     async fn handle_llm_task(&self, task: &Task) -> Result<(String, Vec<Artifact>), AgentError> {
         // 🆕 PLANNING FIX: 基于实际消息内容判断复杂度，复杂任务使用 planning 执行
-        let (message_text, skill_hint) =
+        let message_text =
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&task.input) {
-                let msg = json
-                    .get("message")
+                json.get("message")
                     .and_then(|m| m.as_str())
                     .map(|s| s.to_string())
-                    .unwrap_or_else(|| task.input.clone());
-                let hint = json.get("skill_hint").cloned();
-                (msg, hint)
+                    .unwrap_or_else(|| task.input.clone())
             } else {
-                (task.input.clone(), None)
+                task.input.clone()
             };
 
         let char_count = message_text.chars().count();
@@ -633,25 +626,8 @@ impl Agent {
         // 🆕 FIX: 强规划关键词（如"计划"/"规划"/"攻略"）即使短文本也应触发 planning，
         // 避免"去汕头市旅游五天的计划"（14字）因低于50字阈值而被误判为简单查询。
         // 设置 6 字符下限防止单字误触发（如"计"）。
-        // 🆕 FIX: 但生成类 skill（travel/writer 等）不走 planning，一次性生成更高效。
-        let is_generative_skill = skill_hint.as_ref().map_or(false, |hint| {
-            let name = hint
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_lowercase();
-            name.contains("travel")
-                || name.contains("planner")
-                || name.contains("writer")
-                || name.contains("creator")
-                || name.contains("story")
-                || name.contains("email")
-                || name.contains("master")
-                || name.contains("game")
-        });
-
         let is_complex = has_explicit_planning_param
-            || (has_planning_keywords && char_count >= 6 && !is_generative_skill)
+            || (has_planning_keywords && char_count >= 6)
             || has_multi_step_indicators
             || (char_count > planning_threshold
                 && (has_planning_keywords || has_multi_step_indicators))
@@ -745,48 +721,10 @@ impl Agent {
         // Build message list with memory context, history, and current message
         let mut messages: Vec<communication::Message> = Vec::new();
 
-        // 🆕 FIX: 当 gateway 传入 skill_hint 时，使用其 prompt_template 作为核心
-        // persona。 若 gateway 已通过 memory_context 注入 skill
-        // prompt（当前标准行为），则 persona 只做轻量标识，
-        // 避免同一份 prompt_template 在 persona message 和 memory message
-        // 中重复出现，浪费 token。
-        let persona = if let Some(ref hint) = skill_hint {
-            let name = hint
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or(&self.config.name);
-            let prompt_template = hint
-                .get("prompt_template")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            if !prompt_template.is_empty() {
-                // 检查 gateway 是否已把 skill prompt 注入 memory_context
-                let gateway_has_skill_prompt = gateway_memory_context.as_ref().map_or(false, |m| {
-                    m.contains(prompt_template.trim().split('\n').next().unwrap_or(""))
-                });
-                if gateway_has_skill_prompt {
-                    // Gateway 已注入完整 skill prompt，persona 只做轻量标识
-                    format!("你是 {}。请保持友好、专业、有帮助的态度回答问题。", name)
-                } else {
-                    // Gateway 未注入，使用 skill prompt_template 作为 persona
-                    format!("[角色] {}\n\n{}", name, prompt_template)
-                }
-            } else {
-                let desc = hint
-                    .get("description")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(&self.config.description);
-                format!(
-                    "你是 {}（{}）。请保持友好、专业、有帮助的态度回答问题。",
-                    name, desc
-                )
-            }
-        } else {
-            format!(
-                "你是 {}（{}）。请保持友好、专业、有帮助的态度回答问题。",
-                self.config.name, self.config.description
-            )
-        };
+        let persona = format!(
+            "你是 {}（{}）。请保持友好、专业、有帮助的态度回答问题。",
+            self.config.name, self.config.description
+        );
         messages.push(communication::Message::new(
             uuid::Uuid::new_v4(),
             communication::PlatformType::Custom,
@@ -1039,11 +977,13 @@ impl Agent {
                 system_content.push_str("\n\n");
                 system_content.push_str(&skills_prompt);
                 system_content.push_str(
-                    "\n\n在回复之前：扫描 <available_skills> 中的 <description> \
-                     条目。如果恰好有一个技能明显适用：使用 read_skill 工具读取其 \
-                     SKILL.md，然后遵循它。如果多个可能适用：选择最具体的一个，然后读取/遵循它。\
-                     如果没有明显适用的：不要读取任何 \
-                     SKILL.md。约束：永远不要预先读取多个技能；只在选择后读取。",
+<<<<<<< HEAD
+                    "\n\n## Skills (mandatory)\n\
+                     Before replying: scan <available_skills> <description> entries.\n\
+                     - If exactly one skill clearly applies: read its SKILL.md at <location> with `read_file`, then follow it.\n\
+                     - If multiple could apply: choose the most specific one, then read/follow it.\n\
+                     - If none clearly apply: do not read any SKILL.md.\n\
+                     Constraints: never read more than one skill up front; only read after selecting."
                 );
             }
         }
@@ -1069,199 +1009,6 @@ impl Agent {
             .map_err(|e| AgentError::Execution(format!("LLM tool-call failed: {}", e)))?;
 
         Ok((response, vec![]))
-    }
-
-    /// 🆕 STREAMING FIX: Handle LLM task using streaming callbacks
-    async fn handle_llm_task_stream(
-        &self,
-        task: &Task,
-        callback: Arc<dyn crate::llm::client::StreamCallback>,
-    ) -> Result<(String, Vec<Artifact>), AgentError> {
-        let client = self
-            .llm_client
-            .as_ref()
-            .ok_or_else(|| AgentError::InvalidConfig("LLM client not configured".into()))?;
-
-        // Extract input text (reuse logic from handle_llm_task_with_tools)
-        let input_text = if let Ok(json) = serde_json::from_str::<serde_json::Value>(&task.input) {
-            json.get("message")
-                .and_then(|m| m.as_str())
-                .unwrap_or(&task.input)
-                .to_string()
-        } else {
-            task.input.clone()
-        };
-
-        // Build system message with skills prompt
-        let mut system_content = format!(
-            "你是 {}（{}）。请保持友好、专业、有帮助的态度回答问题。",
-            self.config.name, self.config.description
-        );
-
-        // Inject available skills prompt if registry exists
-        if let Some(ref registry) = self.skill_registry {
-            let skills_prompt = skills::build_skills_prompt(registry).await;
-            if !skills_prompt.is_empty() {
-                system_content.push_str("\n\n");
-                system_content.push_str(&skills_prompt);
-                system_content.push_str(
-                    "\n\n在回复之前：扫描 <available_skills> 中的 <description> \
-                     条目。如果恰好有一个技能明显适用：使用 read_skill 工具读取其 \
-                     SKILL.md，然后遵循它。如果多个可能适用：选择最具体的一个，然后读取/遵循它。\
-                     如果没有明显适用的：不要读取任何 \
-                     SKILL.md。约束：永远不要预先读取多个技能；只在选择后读取。",
-                );
-            }
-        }
-
-        // 🆕 FIX: 添加工具调用约束，防止无限循环
-        system_content.push_str(
-            "\n\n[工具调用约束]\n\
-             1. 你最多可以连续调用 5 次工具。如果 5 次后仍未获得所需信息，请直接告诉用户当前无法获取该信息。\n\
-             2. 不要反复调用同一个工具查询相同的内容。\n\
-             3. 如果工具执行失败（如文件不存在、命令报错），不要继续尝试类似的操作，而是基于已有信息回答用户。\n\
-             4. 每次工具调用后，优先基于返回结果给出文本回答，而不是立即调用下一个工具。",
-        );
-
-        // Build messages for LLM
-        let messages = vec![
-            LlmMessage::system(system_content),
-            LlmMessage::user(input_text),
-        ];
-
-        // Use streaming version
-        let response = client
-            .chat_with_tools_stream(messages, callback.as_ref())
-            .await
-            .map_err(|e| AgentError::Execution(format!("LLM streaming failed: {}", e)))?;
-
-        Ok((response, vec![]))
-    }
-
-    /// 🆕 REFACTOR: Execute a registered skill via LLM with skill prompt as
-    /// system message. WASM execution removed; all skills are now
-    /// Markdown-based and executed through the LLM.
-    async fn execute_registered_skill(
-        &self,
-        registered_skill: &skills::RegisteredSkill,
-        input: &str,
-        parameters: Option<HashMap<String, String>>,
-    ) -> Result<(String, u64), AgentError> {
-        let start_time = std::time::Instant::now();
-
-        let llm = self
-            .llm_interface
-            .as_ref()
-            .ok_or_else(|| AgentError::InvalidConfig("LLM interface not configured".into()))?;
-
-        let manifest = &registered_skill.skill.manifest;
-        let system_prompt = if !manifest.prompt_template.is_empty() {
-            let mut prompt = manifest.prompt_template.clone();
-            if !manifest.description.is_empty() && !prompt.contains(&manifest.description) {
-                prompt.push_str(&format!("\n\nAbout this skill: {}", manifest.description));
-            }
-            if !manifest.examples.is_empty() {
-                prompt.push_str(&format!("\n\nExamples:\n{}", manifest.examples));
-            }
-            prompt
-        } else {
-            format!(
-                "You are acting as the skill '{}'. {}\n\nSkill capabilities:\n{}\n\nExecute the \
-                 following task using this skill persona.",
-                registered_skill.skill.name,
-                manifest.description,
-                manifest
-                    .capabilities
-                    .iter()
-                    .map(|c| format!("- {}", c))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            )
-        };
-
-        let param_context = if let Some(ref params) = parameters {
-            if !params.is_empty() {
-                format!(
-                    "\n\nParameters:\n{}",
-                    params
-                        .iter()
-                        .map(|(k, v)| format!("- {}: {}", k, v))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                )
-            } else {
-                String::new()
-            }
-        } else {
-            String::new()
-        };
-
-        let messages = vec![
-            communication::Message::new(
-                uuid::Uuid::new_v4(),
-                communication::PlatformType::Custom,
-                system_prompt,
-            ),
-            communication::Message::new(
-                uuid::Uuid::new_v4(),
-                communication::PlatformType::Custom,
-                format!("{}{}", input, param_context),
-            ),
-        ];
-
-        let response = llm
-            .call_llm(messages, None)
-            .await
-            .map_err(|e| AgentError::Execution(format!("LLM skill execution failed: {}", e)))?;
-
-        let execution_time_ms = start_time.elapsed().as_millis() as u64;
-        Ok((response, execution_time_ms))
-    }
-
-    async fn handle_skill_task(&self, task: &Task) -> Result<(String, Vec<Artifact>), AgentError> {
-        let skill_name = task
-            .parameters
-            .get("skill")
-            .ok_or_else(|| AgentError::InvalidConfig("Missing 'skill' parameter".into()))?;
-
-        let registry = self
-            .skill_registry
-            .as_ref()
-            .ok_or_else(|| AgentError::InvalidConfig("Skill registry not configured".into()))?;
-
-        let registered_skill = registry
-            .get(skill_name)
-            .await
-            .ok_or_else(|| AgentError::SkillNotFound(skill_name.clone()))?;
-
-        let (output, execution_time_ms) = self
-            .execute_registered_skill(
-                &registered_skill,
-                &task.input,
-                Some(task.parameters.clone()),
-            )
-            .await?;
-
-        let _ = registry.record_usage(skill_name).await;
-
-        let artifacts = if !output.is_empty() {
-            vec![Artifact {
-                id: uuid::Uuid::new_v4().to_string(),
-                artifact_type: "skill_output".to_string(),
-                content: output.into_bytes(),
-                mime_type: "text/plain".to_string(),
-            }]
-        } else {
-            vec![]
-        };
-
-        Ok((
-            format!(
-                "Skill '{}' executed successfully in {}ms",
-                skill_name, execution_time_ms
-            ),
-            artifacts,
-        ))
     }
 
     async fn handle_mcp_task(&self, task: &Task) -> Result<(String, Vec<Artifact>), AgentError> {
@@ -1953,238 +1700,9 @@ impl Agent {
         })
     }
 
-    /// 🆕 FIX: Smart skill search for plan steps using keyword domain mapping.
-    /// Maps step descriptions to relevant skills based on semantic keyword
-    /// overlap rather than simple string containment.
-    async fn search_skills_for_step(
-        &self,
-        registry: &Arc<skills::SkillRegistry>,
-        step_description: &str,
-    ) -> Vec<skills::RegisteredSkill> {
-        let desc_lower = step_description.to_lowercase();
-
-        // Domain keyword → skill name/tag mappings
-        let domain_keywords: &[(&[&str], &str)] = &[
-            (
-                &[
-                    "travel",
-                    "tour",
-                    "trip",
-                    "itinerary",
-                    "旅游",
-                    "旅行",
-                    "行程",
-                    "攻略",
-                    "景点",
-                    "酒店",
-                ],
-                "travel_planner",
-            ),
-            (
-                &[
-                    "code", "program", "develop", "debug", "coding", "编程", "代码", "开发",
-                ],
-                "python_developer",
-            ),
-            (&["code", "rust", "cargo", "编程", "代码"], "rust_developer"),
-            (
-                &["contract", "solidity", "smart contract", "合约", "区块链"],
-                "solidity_developer",
-            ),
-            (&["write", "email", "draft", "邮件", "写信"], "email_writer"),
-            (
-                &["story", "novel", "fiction", "write", "故事", "小说"],
-                "story_writer",
-            ),
-            (&["game", "gaming", "游戏", "玩家"], "game_master"),
-            (
-                &["data", "analyze", "analysis", "数据", "分析", "统计"],
-                "data_analyst",
-            ),
-            (
-                &["image", "photo", "picture", "图", "照片"],
-                "image_analyst",
-            ),
-            (
-                &["calendar", "schedule", "meeting", "日历", "会议", "安排"],
-                "calendar_assistant",
-            ),
-            (&["task", "todo", "plan", "任务", "待办"], "task_manager"),
-            (
-                &["defi", "yield", "liquidity", "farm", "挖矿", "流动性"],
-                "yield_farmer",
-            ),
-            (&["nft", "mint", "token", "数字藏品"], "nft_minter"),
-            (
-                &["health", "medical", "doctor", "健康", "医疗", "医生"],
-                "health_advisor",
-            ),
-            (
-                &["learn", "study", "tutor", "lesson", "学习", "课程", "辅导"],
-                "tutor",
-            ),
-            (
-                &["research", "paper", "survey", "研究", "论文", "调查"],
-                "code_researcher",
-            ),
-            (
-                &[
-                    "dao",
-                    "governance",
-                    "proposal",
-                    "vote",
-                    "治理",
-                    "提案",
-                    "投票",
-                ],
-                "governance_analyst",
-            ),
-            (
-                &["finance", "portfolio", "invest", "理财", "投资", "组合"],
-                "portfolio_manager",
-            ),
-            (
-                &["social", "community", "content", "社媒", "社群", "内容"],
-                "content_creator",
-            ),
-            (
-                &["security", "audit", "vulnerability", "安全", "审计", "漏洞"],
-                "auditor",
-            ),
-        ];
-
-        let mut matched_skill_ids = std::collections::HashSet::new();
-        let mut all_candidates = Vec::new();
-
-        // 1. Try domain keyword mapping against step description
-        for (keywords, skill_id) in domain_keywords {
-            if keywords.iter().any(|kw| desc_lower.contains(kw)) {
-                if let Some(skill) = registry.get(skill_id).await {
-                    if matched_skill_ids.insert(skill_id.to_string()) {
-                        all_candidates.push(skill);
-                    }
-                }
-            }
-        }
-
-        // 🆕 FIX: 优先用原始用户目标匹配 skill（planning steps 常为英文 generic 描述，
-        // 而 goal 包含中文领域关键词，匹配成功率更高）。不再要求 all_candidates 为空，
-        // 而是总是把 goal 匹配的 skill 加入候选池。
-        if let Some(ref goal) = *self.current_plan_goal.read().await {
-            let goal_lower = goal.to_lowercase();
-            for (keywords, skill_id) in domain_keywords {
-                if keywords.iter().any(|kw| goal_lower.contains(kw)) {
-                    if let Some(skill) = registry.get(skill_id).await {
-                        if matched_skill_ids.insert(skill_id.to_string()) {
-                            info!(
-                                "P2 PLANNING: skill '{}' matched via goal '{}' for step '{}'",
-                                skill_id,
-                                goal.chars().take(30).collect::<String>(),
-                                step_description.chars().take(40).collect::<String>()
-                            );
-                            all_candidates.push(skill);
-                        }
-                    } else {
-                        warn!(
-                            "P2 PLANNING: skill '{}' not found in registry (goal match)",
-                            skill_id
-                        );
-                    }
-                }
-            }
-        }
-
-        // 2. Fallback to registry semantic search (name/description)
-        let registry_candidates = registry.search(step_description).await;
-        for skill in registry_candidates {
-            if matched_skill_ids.insert(skill.skill.id.clone()) {
-                all_candidates.push(skill);
-            }
-        }
-
-        // 3. Tag-based search with keywords extracted from description
-        let extracted_keywords: Vec<&str> = desc_lower
-            .split_whitespace()
-            .filter(|w| w.len() >= 3)
-            .collect();
-        for keyword in extracted_keywords.iter().take(5) {
-            let tagged = registry.by_tag(keyword).await;
-            for skill in tagged {
-                if matched_skill_ids.insert(skill.skill.id.clone()) {
-                    all_candidates.push(skill);
-                }
-            }
-        }
-
-        all_candidates
-    }
-
     /// Execute action step
-    ///
-    /// 🟢 P2 FIX: Before falling back to LLM, attempts to match and execute a
-    /// registered skill. This makes planning actually invoke tools instead
-    /// of just chaining LLM calls.
     async fn execute_action_step(&self, step: &PlanStep) -> Result<ExecutionResult, AgentError> {
         let start_time = std::time::Instant::now();
-
-        // 🟢 P2 FIX: Try skill registry first with semantic keyword matching
-        if let Some(ref registry) = self.skill_registry {
-            let enabled_count = registry.list_enabled().await.len();
-            info!(
-                "P2 PLANNING: skill registry has {} enabled skills for step '{}'",
-                enabled_count,
-                step.description.chars().take(40).collect::<String>()
-            );
-            let candidates = self
-                .search_skills_for_step(registry, &step.description)
-                .await;
-            info!(
-                "P2 PLANNING: found {} candidates for step '{}'",
-                candidates.len(),
-                step.description.chars().take(40).collect::<String>()
-            );
-
-            if let Some(skill) = candidates.into_iter().find(|s| s.enabled) {
-                info!(
-                    "P2 PLANNING: matched skill '{}' for step '{}', executing...",
-                    skill.skill.name,
-                    step.description.chars().take(40).collect::<String>()
-                );
-                match self
-                    .execute_registered_skill(&skill, &step.description, None)
-                    .await
-                {
-                    Ok((output, _execution_time_ms)) => {
-                        let _ = registry.record_usage(&skill.skill.id).await;
-                        return Ok(ExecutionResult {
-                            success: true,
-                            data: Some(serde_json::json!({ "output": output })),
-                            error: None,
-                            duration_ms: start_time.elapsed().as_millis() as u64,
-                            attempts: 1,
-                        });
-                    }
-                    Err(e) => {
-                        warn!(
-                            "P2 PLANNING: skill execution failed for step '{}', falling back to \
-                             LLM: {}",
-                            step.description.chars().take(40).collect::<String>(),
-                            e
-                        );
-                    }
-                }
-            } else {
-                warn!(
-                    "P2 PLANNING: no enabled skill matched for step '{}'",
-                    step.description.chars().take(40).collect::<String>()
-                );
-            }
-        } else {
-            warn!(
-                "P2 PLANNING: skill registry is None, cannot match skills for step '{}'",
-                step.description.chars().take(40).collect::<String>()
-            );
-        }
 
         // Fallback: use LLM if available
         if let Some(llm) = &self.llm_interface {

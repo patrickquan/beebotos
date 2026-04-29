@@ -160,7 +160,6 @@ impl AgentInstance {
         }
 
         // Attach skill registry (use externally provided one if available)
-        let skill_registry_for_tools = skill_registry.clone();
         if let Some(registry) = skill_registry {
             agent = agent.with_skill_registry(registry);
         }
@@ -206,7 +205,7 @@ impl AgentInstance {
         agent = agent.with_llm_client(llm_client.clone());
 
         // Register all tools on the LLM client
-        if let Err(e) = agent.register_tools(skill_registry_for_tools).await {
+        if let Err(e) = agent.register_tools().await {
             warn!("Failed to register tools for agent {}: {}", agent_id, e);
         }
 

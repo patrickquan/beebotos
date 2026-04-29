@@ -625,6 +625,7 @@ pub struct SkillInfo {
     pub author: String,
     pub license: String,
     pub installed: bool,
+    #[serde(default)]
     pub capabilities: Vec<String>,
     pub tags: Vec<String>,
     #[serde(default)]

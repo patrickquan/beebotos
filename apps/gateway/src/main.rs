@@ -1078,36 +1078,35 @@ async fn init_channel_registry(
     }
 }
 
-/// Scan skills directory and load installed skills into registry
+/// Scan skills directory and load installed skills into registry (OpenClaw 格式)
 async fn restore_skills_from_disk(registry: &Arc<beebotos_agents::skills::SkillRegistry>) {
     let base_dir = handlers::http::skills::get_skills_base_dir();
     if !base_dir.exists() {
         return;
     }
 
-    let mut loader = beebotos_agents::skills::SkillLoader::new();
-    loader.add_path(&base_dir);
-
+    let source = beebotos_agents::skills::SkillSource::Managed;
     let mut restored = 0;
+
     if let Ok(mut entries) = tokio::fs::read_dir(&base_dir).await {
         while let Ok(Some(entry)) = entries.next_entry().await {
             let path = entry.path();
             if !path.is_dir() {
                 continue;
             }
-            let skill_id = match path.file_name().and_then(|n| n.to_str()) {
-                Some(id) => id.to_string(),
-                None => continue,
-            };
 
-            match loader.load_skill(&skill_id).await {
-                Ok(skill) => {
-                    let category = "general".to_string();
+            match beebotos_agents::skills::SkillLoader::load_skill_from_dir(&path, source,
+            )
+            .await
+            {
+                Ok(Some(skill)) => {
+                    let category = format!("managed/{}", skill.source.label());
                     registry.register(skill, category, vec![]).await;
                     restored += 1;
                 }
+                Ok(None) => {}
                 Err(e) => {
-                    warn!("Failed to restore skill {}: {}", skill_id, e);
+                    warn!("Failed to restore skill from {:?}: {}", path, e);
                 }
             }
         }
@@ -1118,11 +1117,9 @@ async fn restore_skills_from_disk(registry: &Arc<beebotos_agents::skills::SkillR
     }
 }
 
-/// Scan project skills/ directory and register markdown-defined skills as
-/// lightweight builtins. Delegates to the shared loader in beebotos-agents to
-/// keep behaviour in sync.
-async fn register_builtin_skills(registry: &Arc<beebotos_agents::skills::SkillRegistry>) {
-    beebotos_agents::skills::builtin_loader::load_builtin_skills(registry).await;
+/// 内置 Skill 注册（Phase 1 已删除 builtin_loader，此函数留空占位）
+async fn register_builtin_skills(_registry: &Arc<beebotos_agents::skills::SkillRegistry>) {
+    // builtin_loader 已删除，内置 skill 通过 data/skills/ 目录或 ClawHub 安装
 }
 
 /// Initialize database connection pool with retry logic
