@@ -977,7 +977,6 @@ impl Agent {
                 system_content.push_str("\n\n");
                 system_content.push_str(&skills_prompt);
                 system_content.push_str(
-<<<<<<< HEAD
                     "\n\n## Skills (mandatory)\n\
                      Before replying: scan <available_skills> <description> entries.\n\
                      - If exactly one skill clearly applies: read its SKILL.md at <location> with `read_file`, then follow it.\n\

@@ -130,4 +130,4 @@ clippy.toml*:*
 .superpowers/
 docs/superpowers/
 tests/
-skills/
+/skills/
