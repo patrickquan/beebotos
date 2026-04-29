@@ -9,6 +9,13 @@ use tracing::{debug, info, warn};
 use crate::llm::types::{FunctionDefinition, Tool};
 use crate::llm::ToolHandler;
 
+/// 总输出限制（对齐 OpenClaw）
+const OUTPUT_CAP: usize = 200_000;
+/// stdout 限制（占总限制的 3/4，约 150KB）
+const STDOUT_CAP: usize = OUTPUT_CAP * 3 / 4;
+/// stderr 限制（占总限制的 1/4，约 50KB）
+const STDERR_CAP: usize = OUTPUT_CAP / 4;
+
 /// Exec tool — execute shell commands
 pub struct ExecTool;
 
@@ -106,7 +113,7 @@ impl ToolHandler for ExecTool {
 
         if !stdout.is_empty() {
             result.push_str("STDOUT:\n");
-            result.push_str(&truncate_output(&stdout, 16 * 1024));
+            result.push_str(&truncate_output(&stdout, STDOUT_CAP));
         }
 
         if !stderr.is_empty() {
@@ -114,7 +121,7 @@ impl ToolHandler for ExecTool {
                 result.push_str("\n\n");
             }
             result.push_str("STDERR:\n");
-            result.push_str(&truncate_output(&stderr, 8 * 1024));
+            result.push_str(&truncate_output(&stderr, STDERR_CAP));
         }
 
         if result.is_empty() {
@@ -172,6 +179,21 @@ fn resolve_skill_command(command: &str, cwd: Option<&str>) -> String {
 
     let skill_dir = Path::new(cwd);
 
+    // 先检查 token 本身是否就是一个已存在的文件（包含扩展名的情况，如 "a-stock.py"）
+    let token_as_file = skill_dir.join(first_token);
+    if token_as_file.exists() && token_as_file.is_file() {
+        let ext = Path::new(first_token)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        let resolved = resolve_by_extension(command, first_token, ext, cwd);
+        if resolved != command {
+            return resolved;
+        }
+        // 扩展名无法识别，但至少文件存在，尝试原样执行（如 .bat/.cmd/.exe 等）
+        return command.to_string();
+    }
+
     // 检查该 token 是否已对应可直接执行的文件（Windows: bat/cmd/exe/com；Unix: 无扩展名可执行文件）
     #[cfg(target_os = "windows")]
     let direct_extensions: &[&str] = &[".bat", ".cmd", ".exe", ".com"];
@@ -184,8 +206,60 @@ fn resolve_skill_command(command: &str, cwd: Option<&str>) -> String {
         }
     }
 
-    // 查找需要解释器的脚本文件，并按优先级排序
-    // 注意：不同平台优先级不同
+    // 查找需要解释器的脚本文件（token 不带扩展名的情况，如 "a-stock"）
+    let resolved = find_script_and_resolve(command, first_token, skill_dir, cwd);
+    if resolved != command {
+        return resolved;
+    }
+
+    command.to_string()
+}
+
+/// 根据文件扩展名解析 skill 命令（token 本身已包含扩展名，如 "a-stock.py"）
+fn resolve_by_extension(command: &str, token: &str, ext: &str, cwd: &str) -> String {
+    // 可直接执行的扩展名，无需解释器
+    if matches!(ext, "bat" | "cmd" | "exe" | "com") {
+        return command.to_string();
+    }
+
+    // 需要解释器的扩展名
+    let interpreters: &[&str] = match ext {
+        "py" => {
+            #[cfg(target_os = "windows")]
+            {
+                &["python", "py"]
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                &["python3", "python"]
+            }
+        }
+        "js" => &["node", "nodejs"],
+        "sh" => &["sh", "bash"],
+        _ => return command.to_string(),
+    };
+
+    for interpreter in interpreters {
+        if is_command_available(interpreter) {
+            let rest = command.trim_start_matches(token).trim_start();
+            let resolved = if rest.is_empty() {
+                format!("{} {}", interpreter, token)
+            } else {
+                format!("{} {}{}", interpreter, token, rest)
+            };
+            info!(
+                "exec tool: resolved skill command '{}' -> '{}' in {}",
+                command, resolved, cwd
+            );
+            return resolved;
+        }
+    }
+
+    command.to_string()
+}
+
+/// 查找与 token 同名的脚本文件并解析（token 不带扩展名，如 "a-stock"）
+fn find_script_and_resolve(command: &str, token: &str, skill_dir: &Path, cwd: &str) -> String {
     #[cfg(target_os = "windows")]
     let script_candidates: &[(&str, &[&str])] = &[
         (".py", &["python", "py"]),
@@ -200,19 +274,18 @@ fn resolve_skill_command(command: &str, cwd: Option<&str>) -> String {
     ];
 
     for (ext, interpreters) in script_candidates {
-        let script_path = skill_dir.join(format!("{}{}", first_token, ext));
+        let script_path = skill_dir.join(format!("{}{}", token, ext));
         if !script_path.exists() {
             continue;
         }
 
-        // 选择第一个可用的解释器
         for interpreter in *interpreters {
             if is_command_available(interpreter) {
-                let rest = command.trim_start_matches(first_token).trim_start();
+                let rest = command.trim_start_matches(token).trim_start();
                 let resolved = if rest.is_empty() {
-                    format!("{} {}.{}", interpreter, first_token, ext)
+                    format!("{} {}{}", interpreter, token, ext)
                 } else {
-                    format!("{} {}.{}{}", interpreter, first_token, ext, rest)
+                    format!("{} {}{}{}", interpreter, token, ext, rest)
                 };
                 info!(
                     "exec tool: resolved skill command '{}' -> '{}' in {}",
