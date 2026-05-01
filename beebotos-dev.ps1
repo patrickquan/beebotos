@@ -136,7 +136,7 @@ function Build-Service($name) {
 
 function Build-And-Start($name) {
     if (Build-Service $name) {
-        & $RunScript start $name | Out-Null
+        & $RunScript start $name -WorkingDir $ProjectRoot | Out-Null
     }
 }
 
@@ -274,28 +274,28 @@ function Handle-Menu {
                     Build-Service $svc | Out-Null
                 }
             }
-            { $_ -in "2", "2.1" } { & $RunScript start gateway | Out-Null }
-            "2.2" { & $RunScript start web | Out-Null }
-            "2.3" { & $RunScript start beehub | Out-Null }
+            { $_ -in "2", "2.1" } { & $RunScript start gateway -WorkingDir $ProjectRoot | Out-Null }
+            "2.2" { & $RunScript start web -WorkingDir $ProjectRoot | Out-Null }
+            "2.3" { & $RunScript start beehub -WorkingDir $ProjectRoot | Out-Null }
             "2.4" {
                 foreach ($svc in @("gateway", "web", "beehub")) {
-                    & $RunScript start $svc | Out-Null
+                    & $RunScript start $svc -WorkingDir $ProjectRoot | Out-Null
                 }
             }
-            { $_ -in "3", "3.1" } { & $RunScript stop gateway }
-            "3.2" { & $RunScript stop web }
-            "3.3" { & $RunScript stop beehub }
+            { $_ -in "3", "3.1" } { & $RunScript stop gateway -WorkingDir $ProjectRoot }
+            "3.2" { & $RunScript stop web -WorkingDir $ProjectRoot }
+            "3.3" { & $RunScript stop beehub -WorkingDir $ProjectRoot }
             "3.4" {
                 foreach ($svc in @("gateway", "web", "beehub")) {
-                    & $RunScript stop $svc
+                    & $RunScript stop $svc -WorkingDir $ProjectRoot
                 }
             }
-            { $_ -in "4", "4.1" } { & $RunScript restart gateway }
-            "4.2" { & $RunScript restart web }
-            "4.3" { & $RunScript restart beehub }
+            { $_ -in "4", "4.1" } { & $RunScript restart gateway -WorkingDir $ProjectRoot }
+            "4.2" { & $RunScript restart web -WorkingDir $ProjectRoot }
+            "4.3" { & $RunScript restart beehub -WorkingDir $ProjectRoot }
             "4.4" {
                 foreach ($svc in @("gateway", "web", "beehub")) {
-                    & $RunScript restart $svc
+                    & $RunScript restart $svc -WorkingDir $ProjectRoot
                 }
             }
             { $_ -in "5", "5.1" } { Build-And-Start "gateway" }
@@ -306,7 +306,7 @@ function Handle-Menu {
                     Build-And-Start $svc
                 }
             }
-            "6" { & $RunScript status }
+            "6" { & $RunScript status -WorkingDir $ProjectRoot }
             "7" { Pack-Release "all" }
             { $_ -in "0", "q", "quit", "exit" } { Write-Host "Goodbye!"; exit 0 }
             default { Print-Warn "Invalid option: $choice" }
@@ -332,22 +332,22 @@ function Handle-Cli($action, $target = "all") {
         }
         "start" {
             $list = if ($target -eq "all") { @("gateway", "web", "beehub") } else { @($target) }
-            foreach ($svc in $list) { & $RunScript start $svc | Out-Null }
+            foreach ($svc in $list) { & $RunScript start $svc -WorkingDir $ProjectRoot | Out-Null }
         }
         "stop" {
             $list = if ($target -eq "all") { @("gateway", "web", "beehub") } else { @($target) }
-            foreach ($svc in $list) { & $RunScript stop $svc }
+            foreach ($svc in $list) { & $RunScript stop $svc -WorkingDir $ProjectRoot }
         }
         "restart" {
             $list = if ($target -eq "all") { @("gateway", "web", "beehub") } else { @($target) }
-            foreach ($svc in $list) { & $RunScript restart $svc }
+            foreach ($svc in $list) { & $RunScript restart $svc -WorkingDir $ProjectRoot }
         }
         "run" {
             $list = if ($target -eq "all") { @("gateway", "web", "beehub") } else { @($target) }
             foreach ($svc in $list) { Build-And-Start $svc }
         }
         "pack" { Pack-Release $target }
-        "status" { & $RunScript status }
+        "status" { & $RunScript status -WorkingDir $ProjectRoot }
         default {
             Print-Error "Unknown action: $action"
             Write-Host "Usage: beebotos-dev.ps1 [menu|build|start|stop|restart|run|pack|status] [service|all]"

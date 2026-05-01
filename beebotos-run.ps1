@@ -2,9 +2,19 @@
 # BeeBotOS Production Runner (Windows)
 # Usage: .\beebotos-run.ps1 [start|stop|restart|status] [gateway|web|beehub|all]
 
+param(
+    [string]$Action = "start",
+    [string]$Target = "all",
+    [string]$WorkingDir = $null
+)
+
 $ErrorActionPreference = "Stop"
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ScriptDir = if ($WorkingDir) {
+    (Resolve-Path $WorkingDir).Path
+} else {
+    Split-Path -Parent $MyInvocation.MyCommand.Path
+}
 Set-Location $ScriptDir
 
 # Ensure data directories exist
@@ -167,12 +177,9 @@ function Show-Status {
     }
 }
 
-$action = if ($args.Count -gt 0) { $args[0] } else { "start" }
-$target = if ($args.Count -gt 1) { $args[1] } else { "all" }
-
-switch ($action) {
+switch ($Action) {
     "start" {
-        switch ($target) {
+        switch ($Target) {
             "gateway" { Start-ServiceByName "gateway" | Out-Null }
             "web"     { Start-ServiceByName "web"     | Out-Null }
             "beehub"  { Start-ServiceByName "beehub"  | Out-Null }
@@ -186,7 +193,7 @@ switch ($action) {
         }
     }
     "stop" {
-        switch ($target) {
+        switch ($Target) {
             "gateway" { Stop-ServiceByName "gateway" }
             "web"     { Stop-ServiceByName "web" }
             "beehub"  { Stop-ServiceByName "beehub" }
@@ -200,7 +207,7 @@ switch ($action) {
         }
     }
     "restart" {
-        switch ($target) {
+        switch ($Target) {
             "gateway" { Restart-ServiceByName "gateway" }
             "web"     { Restart-ServiceByName "web" }
             "beehub"  { Restart-ServiceByName "beehub" }
