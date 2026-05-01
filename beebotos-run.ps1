@@ -15,9 +15,9 @@ New-Item -ItemType Directory -Force -Path $RunDir | Out-Null
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
 $Services = @(
-    @{ Name = "gateway"; Binary = "beebotos-gateway.exe"; Port = 8000; Desc = "API Gateway" }
-    @{ Name = "web";     Binary = "web-server.exe";       Port = 8090; Desc = "Web Frontend Server" }
-    @{ Name = "beehub";  Binary = "beehub.exe";           Port = 8080; Desc = "BeeHub Service" }
+    @{ Name = "gateway"; Binary = "target\release\beebotos-gateway.exe"; Port = 8000; Desc = "API Gateway" }
+    @{ Name = "web";     Binary = "target\release\web-server.exe";       Port = 8090; Desc = "Web Frontend Server" }
+    @{ Name = "beehub";  Binary = "target\release\beehub.exe";           Port = 8080; Desc = "BeeHub Service" }
 )
 
 function Test-IsRunning($name) {
