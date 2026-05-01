@@ -82,6 +82,11 @@ is_running() {
             return 0
         fi
     fi
+    # 回退：检查端口是否被监听（兼容 PID 文件丢失的情况）
+    local port=$(get_service_field "$svc" 2)
+    if command -v netstat &>/dev/null; then
+        netstat -an 2>/dev/null | grep "LISTEN" | grep -qE "([:.])$port([[:space:]]|$)" && return 0
+    fi
     return 1
 }
 
