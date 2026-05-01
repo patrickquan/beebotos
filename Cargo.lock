@@ -1763,7 +1763,6 @@ dependencies = [
  "uuid",
  "wasmparser 0.246.2",
  "which",
- "zip",
 ]
 
 [[package]]
