@@ -96,6 +96,23 @@ impl Agent {
         }
     }
 
+    /// 构建包含运行环境信息的基础系统提示
+    fn build_base_system_prompt(&self) -> String {
+        let os_name = if cfg!(target_os = "windows") {
+            "Windows"
+        } else if cfg!(target_os = "macos") {
+            "macOS"
+        } else {
+            "Linux"
+        };
+
+        format!(
+            "你是 {}（{}）。请保持友好、专业、有帮助的态度回答问题。\n\n\
+             [运行环境]\n当前操作系统：{}。",
+            self.config.name, self.config.description, os_name
+        )
+    }
+
     pub fn with_a2a(mut self, client: a2a::A2AClient) -> Self {
         self.a2a_client = Some(client);
         self
@@ -701,10 +718,7 @@ impl Agent {
         // Build message list with memory context, history, and current message
         let mut messages: Vec<communication::Message> = Vec::new();
 
-        let persona = format!(
-            "你是 {}（{}）。请保持友好、专业、有帮助的态度回答问题。",
-            self.config.name, self.config.description
-        );
+        let persona = self.build_base_system_prompt();
         messages.push(communication::Message::new(
             uuid::Uuid::new_v4(),
             communication::PlatformType::Custom,

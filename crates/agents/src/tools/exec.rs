@@ -242,7 +242,7 @@ fn resolve_by_extension(command: &str, token: &str, ext: &str, cwd: &str) -> Str
             let resolved = if rest.is_empty() {
                 format!("{} {}", interpreter, token)
             } else {
-                format!("{} {}{}", interpreter, token, rest)
+                format!("{} {} {}", interpreter, token, rest)
             };
             info!(
                 "exec tool: resolved skill command '{}' -> '{}' in {}",
@@ -282,7 +282,7 @@ fn find_script_and_resolve(command: &str, token: &str, skill_dir: &Path, cwd: &s
                 let resolved = if rest.is_empty() {
                     format!("{} {}{}", interpreter, token, ext)
                 } else {
-                    format!("{} {}{}{}", interpreter, token, ext, rest)
+                    format!("{} {}{} {}", interpreter, token, ext, rest)
                 };
                 info!(
                     "exec tool: resolved skill command '{}' -> '{}' in {}",
