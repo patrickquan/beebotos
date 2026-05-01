@@ -8,68 +8,65 @@ BeeBotOS is a Web4.0 autonomous agent operating system built in Rust. It uses a 
 
 This is a Cargo workspace with 11 core crates and 4 applications. The project uses nightly Rust (see `rust-toolchain.toml`).
 
-## Common Commands
+## 开发工作流（Dev Workflow）
 
-### Build
-```bash
-cargo build --workspace --release    # Release build
-cargo build --workspace              # Debug build
-cargo build -p beebotos-kernel       # Build specific crate
-cargo build -p beebotos-gateway      # Build specific app
+### 编译、启动、停止服务 — 必须使用脚本
+**编译和启动任何服务时，禁止使用 `cargo build`、`wasm-pack` 等手动命令。** 必须使用项目提供的统一脚本：
+
+| 平台 | 开发脚本（编译+启动+菜单） | 运行脚本（仅启动/停止） |
+|------|---------------------------|------------------------|
+| Windows | `beebotos-dev.ps1` | `beebotos-run.ps1` |
+| Linux/macOS | `beebotos-dev.sh` | `beebotos-run.sh` |
+
+**常用命令（Windows 示例）：**
+```powershell
+.\beebotos-dev.ps1 run gateway      # 编译并启动 gateway（最常用）
+.\beebotos-dev.ps1 build gateway    # 仅编译 gateway
+.\beebotos-dev.ps1 build web        # 编译 web 前端（含 wasm-pack）
+.\beebotos-dev.ps1 start gateway    # 仅启动 gateway
+.\beebotos-dev.ps1 stop gateway     # 停止 gateway
+.\beebotos-dev.ps1 restart gateway  # 重启 gateway
+.\beebotos-dev.ps1 status           # 查看所有服务状态
+.\beebotos-dev.ps1 menu             # 交互式菜单
 ```
 
-### Test
+**常用命令（Linux/macOS 示例）：**
 ```bash
-cargo test --workspace --all-features              # All tests
-cargo test --workspace --lib                       # Unit tests only
-cargo test --workspace --test '*'                  # Integration tests only
-cargo test -p beebotos-kernel                      # Specific crate tests
-cargo test test_name -- --nocapture                # Single test with output
-cargo bench --workspace                            # Benchmarks
+./beebotos-dev.sh run gateway
+./beebotos-dev.sh build web
+./beebotos-dev.sh start gateway
+./beebotos-dev.sh stop gateway
+./beebotos-dev.sh restart gateway
+./beebotos-dev.sh status
 ```
 
-### Code Quality
+支持的服务：`gateway`（8000）、`web`（8090）、`beehub`（8080）、`cli`（仅安装）
+
+### 测试与代码质量（可直接使用 cargo）
 ```bash
-cargo fmt --all                                    # Format all code
-cargo fmt --all -- --check                         # Check formatting (CI)
+cargo test --workspace --all-features              # 全部测试
+cargo test --workspace --lib                       # 仅单元测试
+cargo test test_name -- --nocapture                # 单个测试并输出
+cargo fmt --all                                    # 格式化
+cargo fmt --all -- --check                         # 检查格式（CI）
 cargo clippy --workspace --all-targets --all-features -- -D warnings  # Lint
-cargo deny check                                   # Dependency/license check
-cargo audit                                        # Security audit
-cargo doc --workspace --no-deps                    # Generate docs
+cargo deny check                                   # 依赖/许可证检查
+cargo audit                                        # 安全审计
+cargo doc --workspace --no-deps                    # 生成文档
+cargo bench --workspace                            # 基准测试
 ```
 
-### Smart Contracts (Foundry)
+### 智能合约（Foundry）
 ```bash
-cd contracts && forge build                        # Build Solidity contracts
-cd contracts && forge test                         # Run contract tests
-cd contracts && forge fmt                          # Format contracts
+cd contracts && forge build                        # 编译 Solidity
+cd contracts && forge test                         # 运行合约测试
+cd contracts && forge fmt                          # 格式化合约
 ```
 
-### Alternative: `just` and `make`
-Both `justfile` and `Makefile` provide convenience recipes (`build`, `test`, `lint`, `fmt`, `check`, `dev`, `install`, `coverage`, `contract-build`/`contract-test`, `setup`, etc.). Run `just --list` or `make help` to see the full set. The `make` variant additionally has `test-unit` and `test-integration` for split runs.
-
-### Helper Scripts
-Top-level shell scripts are provided for common dev/run workflows:
-- `beebotos-dev.sh` / `beebotos-dev.ps1` — development workflow helper
-- `beebotos-run.sh` / `beebotos-run.ps1` — service runner
-- `scripts/setup-dev.sh` — dev environment bootstrap (also invoked via `just setup` / `make setup`)
-
-### 重要：Claude 必须使用脚本管理服务
-**编译、启动、停止服务时，必须使用 `beebotos-dev.sh`（Linux/macOS）或 `beebotos-run.ps1`（Windows）脚本，禁止手动调用 `cargo build`、`wasm-pack` 等命令。**
-
-常用命令：
-```bash
-./beebotos-dev.sh build web        # 构建 web 前端（含 wasm-pack + cargo build）
-./beebotos-dev.sh build gateway    # 构建 gateway
-./beebotos-dev.sh start web        # 启动 web 服务（端口 8090）
-./beebotos-dev.sh start gateway    # 启动 gateway（端口 8000）
-./beebotos-dev.sh stop web         # 停止 web 服务
-./beebotos-dev.sh restart web      # 重启 web 服务
-./beebotos-dev.sh status           # 查看所有服务状态
-./beebotos-dev.sh menu             # 交互式菜单
-```
-
-支持的服务：`gateway`（8000）、`web`（8090）、`beehub`（8080）、`cli`
+### 其他工具
+- `just` / `make` — 便捷命令（`build`、`test`、`lint`、`fmt`、`setup` 等）
+- `scripts/setup-dev.sh` — 开发环境初始化
+- `lefthook` — Git hooks（pre-commit 自动运行 fmt + clippy + test）
 
 ## Workspace Structure
 

@@ -81,37 +81,47 @@ impl ToolHandler for WebFetchTool {
 }
 
 /// Very basic HTML tag stripping
+/// 使用字节级遍历，完全避免 UTF-8 切片越界问题
 fn html_to_text(html: &str) -> String {
     let mut result = String::with_capacity(html.len());
     let mut in_tag = false;
     let mut in_script = false;
     let mut prev_char = ' ';
+    let bytes = html.as_bytes();
+    let mut i = 0;
 
-    for ch in html.chars() {
+    while i < bytes.len() {
+        // 安全获取当前位置的字符及其字节长度
+        let ch = match html[i..].chars().next() {
+            Some(c) => c,
+            None => break,
+        };
+        let ch_len = ch.len_utf8();
+
         if in_script {
-            if ch == '<' {
-                // Check for </script>
-                if html[result.len().saturating_sub(1)..].starts_with("</script>") {
-                    in_script = false;
-                }
+            if ch == '<' && i + 9 <= bytes.len() && &bytes[i..i + 9] == b"</script>" {
+                in_script = false;
             }
+            i += ch_len;
             continue;
         }
 
         if ch == '<' {
             in_tag = true;
-            // Check for <script
-            if html[result.len().saturating_sub(1)..]
-                .to_lowercase()
-                .starts_with("<script")
-            {
-                in_script = true;
+            // 字节级比较，避免任何字符串切片
+            if i + 7 <= bytes.len() {
+                let tag = &bytes[i..i + 7];
+                if tag.eq_ignore_ascii_case(b"<script") {
+                    in_script = true;
+                }
             }
+            i += ch_len;
             continue;
         }
 
         if ch == '>' && in_tag {
             in_tag = false;
+            i += ch_len;
             continue;
         }
 
@@ -126,6 +136,7 @@ fn html_to_text(html: &str) -> String {
                 prev_char = ch;
             }
         }
+        i += ch_len;
     }
 
     result.trim().to_string()
