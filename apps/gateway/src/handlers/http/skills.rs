@@ -310,7 +310,7 @@ pub async fn get_skill(
 
 /// Uninstall a skill
 pub async fn uninstall_skill(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, GatewayError> {
     info!("Uninstalling skill: {}", id);
@@ -323,12 +323,45 @@ pub async fn uninstall_skill(
         });
     }
 
+    // 🔧 FIX: 先读取 SKILL.md 获取 skill name，Registry 中按 name 存储
+    let skill_name = {
+        let skill_md_path = skill_dir.join("SKILL.md");
+        if let Ok(content) = tokio::fs::read_to_string(&skill_md_path).await {
+            let (frontmatter, _) = parse_frontmatter(&content).unwrap_or_default();
+            if let Ok(manifest) = serde_yaml::from_str::<serde_yaml::Value>(&frontmatter) {
+                manifest["name"]
+                    .as_str()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| id.clone())
+            } else {
+                id.clone()
+            }
+        } else {
+            id.clone()
+        }
+    };
+
     tokio::fs::remove_dir_all(&skill_dir)
         .await
         .map_err(|e| GatewayError::Internal {
             message: format!("Failed to uninstall skill: {}", e),
             correlation_id: uuid::Uuid::new_v4().to_string(),
         })?;
+
+    // 🔧 FIX: 同步从内存 SkillRegistry 中注销（使用 skill name 作为 key）
+    if let Some(ref registry) = state.skill_registry {
+        let unregistered = registry.unregister(&skill_name).await;
+        if unregistered.is_some() {
+            info!("Unregistered skill '{}' (name={}) from SkillRegistry", id, skill_name);
+        } else {
+            // 兜底：也尝试用 id 注销
+            let unregistered_by_id = registry.unregister(&id).await;
+            if unregistered_by_id.is_some() {
+                info!("Unregistered skill '{}' (by id) from SkillRegistry", id);
+            }
+        }
+    }
 
     info!("Successfully uninstalled skill: {}", id);
 
