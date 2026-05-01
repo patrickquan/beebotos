@@ -39,6 +39,13 @@ function Test-IsRunning($name) {
             $proc = Get-Process -Id $svcPid -ErrorAction SilentlyContinue
             if ($proc) { return $true }
         } catch {}
+        # 回退：按进程名查找（兼容 MSYS2/bash 启动的进程，其 PID 为模拟层 ID）
+        $svc = $Services | Where-Object { $_.Name -eq $name } | Select-Object -First 1
+        if ($svc) {
+            $binaryName = ($svc.Binary | Split-Path -Leaf) -replace '\.exe$',''
+            $procByName = Get-Process | Where-Object { $_.ProcessName -like "*$binaryName*" } | Select-Object -First 1
+            if ($procByName) { return $true }
+        }
     }
     return $false
 }
