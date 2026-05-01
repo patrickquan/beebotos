@@ -11,6 +11,8 @@ mkdir -p "${PID_DIR}"
 
 cd "${PROJECT_ROOT}"
 
+RUN_SCRIPT="${PROJECT_ROOT}/beebotos-run.sh"
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -97,123 +99,9 @@ build_service() {
     fi
 }
 
-get_pid_file() {
-    echo "${PID_DIR}/${1}.pid"
-}
-
-is_running() {
-    local svc="$1"
-    local pid_file=$(get_pid_file "$svc")
-    if [[ -f "$pid_file" ]]; then
-        local pid=$(cat "$pid_file")
-        if kill -0 "$pid" 2>/dev/null; then
-            return 0
-        fi
-    fi
-    return 1
-}
-
-start_service() {
-    local svc="$1"
-    local binary=$(get_service_field "$svc" 2)
-    local port=$(get_service_field "$svc" 3)
-    local desc=$(get_service_field "$svc" 4)
-    local pid_file=$(get_pid_file "$svc")
-
-    if [[ -z "$binary" ]]; then
-        print_warn "${svc} is not a daemon service, skipping start."
-        return 0
-    fi
-
-    if is_running "$svc"; then
-        print_warn "${svc} is already running (PID: $(cat "$pid_file"))"
-        return 0
-    fi
-
-    if [[ ! -f "$binary" ]]; then
-        print_error "Binary not found: $binary"
-        print_info "Please build ${svc} first."
-        return 1
-    fi
-
-    echo -e "${CYAN}Starting: ${desc} (${svc})${NC}"
-    print_info "Binary: $binary"
-    print_info "Port: $port"
-
-    if [[ "$svc" == "web" ]]; then
-        # 准备临时静态目录，解决 CSS/favicon 软链接问题
-        local temp_static_dir="${PROJECT_ROOT}/data/run/web-static"
-        rm -rf "$temp_static_dir"
-        mkdir -p "$temp_static_dir"
-        cp -L "${PROJECT_ROOT}/apps/web/index.html" "$temp_static_dir/"
-        cp -rL "${PROJECT_ROOT}/apps/web/pkg" "$temp_static_dir/"
-        cp -rL "${PROJECT_ROOT}/apps/web/style" "$temp_static_dir/"
-        cp -L "${PROJECT_ROOT}/apps/web/style/main.css" "$temp_static_dir/style.css"
-        cp -L "${PROJECT_ROOT}/apps/web/style/components.css" "$temp_static_dir/components.css"
-        if [[ -f "${PROJECT_ROOT}/apps/web/public/favicon.svg" ]]; then
-            cp -L "${PROJECT_ROOT}/apps/web/public/favicon.svg" "$temp_static_dir/favicon.svg"
-        fi
-        if [[ -f "${PROJECT_ROOT}/apps/web/public/marked.min.js" ]]; then
-            cp -L "${PROJECT_ROOT}/apps/web/public/marked.min.js" "$temp_static_dir/marked.min.js"
-        fi
-        print_info "Static path: $temp_static_dir"
-        print_info "Gateway URL: http://localhost:8000"
-        nohup "$binary" --static-path "$temp_static_dir" --gateway-url http://localhost:8000 > "${PID_DIR}/${svc}.log" 2>&1 &
-    else
-        nohup "$binary" > "${PID_DIR}/${svc}.log" 2>&1 &
-    fi
-    local pid=$!
-    echo $pid > "$pid_file"
-
-    sleep 1
-    if kill -0 "$pid" 2>/dev/null; then
-        print_success "${svc} started (PID: $pid)"
-    else
-        print_error "${svc} failed to start. Check ${PID_DIR}/${svc}.log"
-        rm -f "$pid_file"
-        return 1
-    fi
-}
-
-stop_service() {
-    local svc="$1"
-    local pid_file=$(get_pid_file "$svc")
-
-    if ! is_running "$svc"; then
-        print_warn "${svc} is not running"
-        rm -f "$pid_file"
-        return 0
-    fi
-
-    local pid=$(cat "$pid_file")
-    echo -e "${CYAN}Stopping ${svc} (PID: $pid)...${NC}"
-
-    if kill "$pid" 2>/dev/null; then
-        local count=0
-        while kill -0 "$pid" 2>/dev/null && [[ $count -lt 10 ]]; do
-            sleep 0.5
-            count=$((count + 1))
-        done
-        if kill -0 "$pid" 2>/dev/null; then
-            kill -9 "$pid" 2>/dev/null || true
-            print_warn "${svc} force stopped"
-        else
-            print_success "${svc} stopped"
-        fi
-    fi
-    rm -f "$pid_file"
-}
-
-restart_service() {
-    local svc="$1"
-    stop_service "$svc"
-    sleep 1
-    start_service "$svc"
-}
-
 build_and_start() {
     local svc="$1"
-    build_service "$svc" && start_service "$svc"
+    build_service "$svc" && "$RUN_SCRIPT" start "$svc" --working-dir "$PROJECT_ROOT"
 }
 
 pack_release() {
@@ -280,27 +168,6 @@ pack_release() {
     ls -lah "${out_dir}"
 }
 
-show_status() {
-    echo -e "${CYAN}Service Status${NC}"
-    echo -e "${CYAN}----------------------------------------${NC}"
-    printf "%-12s %-10s %-8s %s\n" "Service" "Status" "PID" "Port"
-    echo "----------------------------------------"
-    for entry in "${SERVICES[@]}"; do
-        IFS='|' read -r name _ binary port desc <<< "$entry"
-        if [[ -z "$binary" ]]; then
-            printf "%-12s %-10s %-8s %s\n" "$name" "N/A" "-" "install-only"
-            continue
-        fi
-        local pid_file=$(get_pid_file "$name")
-        if is_running "$name"; then
-            local pid=$(cat "$pid_file")
-            printf "%-12s ${GREEN}%-10s${NC} %-8s %s\n" "$name" "running" "$pid" "$port"
-        else
-            printf "%-12s ${RED}%-10s${NC} %-8s %s\n" "$name" "stopped" "-" "$port"
-        fi
-    done
-}
-
 show_menu() {
     clear
     print_header
@@ -358,28 +225,28 @@ handle_menu() {
                     build_service "$svc" || true
                 done
                 ;;
-            2|2.1) start_service gateway ;;
-            2.2)  start_service web ;;
-            2.3)  start_service beehub ;;
+            2|2.1) "$RUN_SCRIPT" start gateway --working-dir "$PROJECT_ROOT" ;;
+            2.2)  "$RUN_SCRIPT" start web --working-dir "$PROJECT_ROOT" ;;
+            2.3)  "$RUN_SCRIPT" start beehub --working-dir "$PROJECT_ROOT" ;;
             2.4)
                 for svc in gateway web beehub; do
-                    start_service "$svc" || true
+                    "$RUN_SCRIPT" start "$svc" --working-dir "$PROJECT_ROOT" || true
                 done
                 ;;
-            3|3.1) stop_service gateway ;;
-            3.2)  stop_service web ;;
-            3.3)  stop_service beehub ;;
+            3|3.1) "$RUN_SCRIPT" stop gateway --working-dir "$PROJECT_ROOT" ;;
+            3.2)  "$RUN_SCRIPT" stop web --working-dir "$PROJECT_ROOT" ;;
+            3.3)  "$RUN_SCRIPT" stop beehub --working-dir "$PROJECT_ROOT" ;;
             3.4)
                 for svc in gateway web beehub; do
-                    stop_service "$svc"
+                    "$RUN_SCRIPT" stop "$svc" --working-dir "$PROJECT_ROOT"
                 done
                 ;;
-            4|4.1) restart_service gateway ;;
-            4.2)  restart_service web ;;
-            4.3)  restart_service beehub ;;
+            4|4.1) "$RUN_SCRIPT" restart gateway --working-dir "$PROJECT_ROOT" ;;
+            4.2)  "$RUN_SCRIPT" restart web --working-dir "$PROJECT_ROOT" ;;
+            4.3)  "$RUN_SCRIPT" restart beehub --working-dir "$PROJECT_ROOT" ;;
             4.4)
                 for svc in gateway web beehub; do
-                    restart_service "$svc" || true
+                    "$RUN_SCRIPT" restart "$svc" --working-dir "$PROJECT_ROOT" || true
                 done
                 ;;
             5|5.1) build_and_start gateway ;;
@@ -390,7 +257,7 @@ handle_menu() {
                     build_and_start "$svc" || true
                 done
                 ;;
-            6) show_status ;;
+            6) "$RUN_SCRIPT" status --working-dir "$PROJECT_ROOT" ;;
             7) pack_release all ;;
             0|q|quit|exit) echo "Goodbye!"; exit 0 ;;
             *) print_warn "Invalid option: $choice" ;;
@@ -424,28 +291,28 @@ handle_cli() {
         start)
             if [[ "$target" == "all" ]]; then
                 for svc in gateway web beehub; do
-                    start_service "$svc" || true
+                    "$RUN_SCRIPT" start "$svc" --working-dir "$PROJECT_ROOT" || true
                 done
             else
-                start_service "$target"
+                "$RUN_SCRIPT" start "$target" --working-dir "$PROJECT_ROOT"
             fi
             ;;
         stop)
             if [[ "$target" == "all" ]]; then
                 for svc in gateway web beehub; do
-                    stop_service "$svc"
+                    "$RUN_SCRIPT" stop "$svc" --working-dir "$PROJECT_ROOT"
                 done
             else
-                stop_service "$target"
+                "$RUN_SCRIPT" stop "$target" --working-dir "$PROJECT_ROOT"
             fi
             ;;
         restart)
             if [[ "$target" == "all" ]]; then
                 for svc in gateway web beehub; do
-                    restart_service "$svc" || true
+                    "$RUN_SCRIPT" restart "$svc" --working-dir "$PROJECT_ROOT" || true
                 done
             else
-                restart_service "$target"
+                "$RUN_SCRIPT" restart "$target" --working-dir "$PROJECT_ROOT"
             fi
             ;;
         run)
@@ -461,7 +328,7 @@ handle_cli() {
             pack_release "$target"
             ;;
         status)
-            show_status
+            "$RUN_SCRIPT" status --working-dir "$PROJECT_ROOT"
             ;;
         *)
             print_error "Unknown action: $action"

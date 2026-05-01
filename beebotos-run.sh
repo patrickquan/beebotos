@@ -5,6 +5,36 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Parse arguments
+ACTION="start"
+TARGET="all"
+WORKING_DIR=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --working-dir)
+            WORKING_DIR="$2"
+            shift 2
+            ;;
+        start|stop|restart|status)
+            ACTION="$1"
+            shift
+            ;;
+        gateway|web|beehub|all)
+            TARGET="$1"
+            shift
+            ;;
+        *)
+            echo "Unknown argument: $1"
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -n "$WORKING_DIR" ]]; then
+    SCRIPT_DIR="$WORKING_DIR"
+fi
 cd "${SCRIPT_DIR}"
 
 # Colors
@@ -62,13 +92,19 @@ start_service() {
     local desc=$(get_service_field "$svc" 3)
     local pid_file=$(get_pid_file "$svc")
 
-    if [[ ! -f "./${binary}" ]]; then
-        if [[ "$svc" == "beehub" ]]; then
+    local binary_path="./${binary}"
+    if [[ ! -f "$binary_path" ]]; then
+        # 开发环境回退：检查 target/release/
+        local dev_binary="target/release/${binary}"
+        if [[ -f "$dev_binary" ]]; then
+            binary_path="$dev_binary"
+        elif [[ "$svc" == "beehub" ]]; then
             echo -e "${YELLOW}BeeHub binary not found, skipping.${NC}"
             return 0
+        else
+            echo -e "${RED}Binary not found: ./${binary}${NC}"
+            return 1
         fi
-        echo -e "${RED}Binary not found: ./${binary}${NC}"
-        return 1
     fi
 
     if is_running "$svc"; then
@@ -80,9 +116,32 @@ start_service() {
     local log_file="data/logs/${svc}.log"
 
     if [[ "$svc" == "web" ]]; then
-        nohup "./${binary}" --config config/web-server.toml --static-path . > "${log_file}" 2>&1 &
+        if [[ -f "./index.html" && -d "./pkg" ]]; then
+            # 生产环境：直接使用当前目录
+            nohup "$binary_path" --static-path . --gateway-url http://localhost:8000 > "${log_file}" 2>&1 &
+        elif [[ -f "apps/web/index.html" ]]; then
+            # 开发环境：准备临时静态目录
+            local temp_static_dir="${SCRIPT_DIR}/data/temp-web-static"
+            rm -rf "$temp_static_dir"
+            mkdir -p "$temp_static_dir"
+            cp "apps/web/index.html" "$temp_static_dir/"
+            cp -r "apps/web/pkg" "$temp_static_dir/"
+            cp -r "apps/web/style" "$temp_static_dir/"
+            cp "apps/web/style/main.css" "$temp_static_dir/style.css"
+            cp "apps/web/style/components.css" "$temp_static_dir/components.css"
+            if [[ -f "apps/web/public/favicon.svg" ]]; then
+                cp "apps/web/public/favicon.svg" "$temp_static_dir/favicon.svg"
+            fi
+            if [[ -f "apps/web/public/marked.min.js" ]]; then
+                cp "apps/web/public/marked.min.js" "$temp_static_dir/marked.min.js"
+            fi
+            nohup "$binary_path" --static-path "$temp_static_dir" --gateway-url http://localhost:8000 > "${log_file}" 2>&1 &
+        else
+            echo -e "${RED}Web static files not found. Please build web first: ./beebotos-dev.sh build web${NC}"
+            return 1
+        fi
     else
-        nohup "./${binary}" > "${log_file}" 2>&1 &
+        nohup "$binary_path" > "${log_file}" 2>&1 &
     fi
 
     local pid=$!
@@ -152,13 +211,9 @@ show_status() {
     done
 }
 
-# Argument parsing
-action="${1:-start}"
-target="${2:-all}"
-
-case "$action" in
+case "$ACTION" in
     start)
-        case "$target" in
+        case "$TARGET" in
             gateway) start_service "gateway" ;;
             web) start_service "web" ;;
             beehub) start_service "beehub" ;;
@@ -175,7 +230,7 @@ case "$action" in
         esac
         ;;
     stop)
-        case "$target" in
+        case "$TARGET" in
             gateway) stop_service "gateway" ;;
             web) stop_service "web" ;;
             beehub) stop_service "beehub" ;;
@@ -192,7 +247,7 @@ case "$action" in
         esac
         ;;
     restart)
-        case "$target" in
+        case "$TARGET" in
             gateway) restart_service "gateway" ;;
             web) restart_service "web" ;;
             beehub) restart_service "beehub" ;;
