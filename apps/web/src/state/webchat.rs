@@ -3,7 +3,6 @@
 use std::sync::{Arc, Mutex};
 
 use leptos::prelude::*;
-use wasm_bindgen::JsCast;
 
 use crate::gateway::websocket::{
     ChatEventPayload, ChatEventType, WsConnectionStatus, WsEventHandler,
@@ -294,10 +293,9 @@ impl WebchatState {
                 self.set_error(event.error_message);
             }
             ChatEventType::Processing => {
-                // Agent 开始处理，显示加载状态
-                self.is_streaming.set(true);
+                // Agent 开始处理，仅标记发送中状态
+                // 避免在 release 模式下同时更新多个 signal 触发竞争条件
                 self.is_sending.set(true);
-                self.current_run_id.set(Some(event.run_id.clone()));
             }
         }
     }
@@ -481,19 +479,12 @@ impl WsEventHandler for WebchatWsHandler {
     }
 
     fn on_chat_event(&self, event: ChatEventPayload) {
-        // 使用 setTimeout(0) 延迟处理，避免 WASM TaskQueue RefCell 双重借用
+        // 使用 spawn_local 延迟处理，避免 WASM TaskQueue RefCell 双重借用
+        // 同时避免 Closure::forget() 在 release 模式下潜在的生命周期问题
         let state = self.state.clone();
-        let window = web_sys::window().unwrap();
-        let closure = wasm_bindgen::closure::Closure::once(move || {
+        wasm_bindgen_futures::spawn_local(async move {
             state.handle_chat_event(event);
         });
-        window
-            .set_timeout_with_callback_and_timeout_and_arguments_0(
-                closure.as_ref().unchecked_ref(),
-                0,
-            )
-            .unwrap();
-        closure.forget();
     }
 
     fn on_error(&self, error: String) {
