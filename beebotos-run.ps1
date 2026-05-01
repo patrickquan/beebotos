@@ -42,12 +42,17 @@ function Start-ServiceByName($name) {
 
     $binaryPath = Join-Path $ScriptDir $svc.Binary
     if (-not (Test-Path $binaryPath)) {
-        if ($name -eq "beehub") {
+        # 生产环境回退：二进制与脚本在同一目录
+        $localBinary = Join-Path $ScriptDir ($svc.Binary | Split-Path -Leaf)
+        if (Test-Path $localBinary) {
+            $binaryPath = $localBinary
+        } elseif ($name -eq "beehub") {
             Write-Host "BeeHub binary not found, skipping."
             return $true
+        } else {
+            Write-Host "Binary not found: $binaryPath" -ForegroundColor Red
+            return $false
         }
-        Write-Host "Binary not found: $binaryPath" -ForegroundColor Red
-        return $false
     }
 
     if (Test-IsRunning $name) {
@@ -68,7 +73,35 @@ function Start-ServiceByName($name) {
         WindowStyle            = "Hidden"
     }
     if ($name -eq "web") {
-        $procParams.ArgumentList = @("--config", "config\web-server.toml", "--static-path", ".")
+        # 检测生产环境：当前目录已有完整静态资源
+        $hasIndexHtml = Test-Path (Join-Path $ScriptDir "index.html")
+        $hasPkg = Test-Path (Join-Path $ScriptDir "pkg")
+        if ($hasIndexHtml -and $hasPkg) {
+            # 生产环境：直接使用当前目录
+            $procParams.ArgumentList = @("--static-path", ".", "--gateway-url", "http://localhost:8000")
+        } elseif (Test-Path (Join-Path $ScriptDir "apps\web\index.html")) {
+            # 开发环境：从 apps/web 准备临时静态目录
+            $tempStaticDir = Join-Path $ScriptDir "data\temp-web-static"
+            if (Test-Path $tempStaticDir) { Remove-Item -Recurse -Force $tempStaticDir }
+            New-Item -ItemType Directory -Force -Path $tempStaticDir | Out-Null
+            Copy-Item (Join-Path $ScriptDir "apps\web\index.html") $tempStaticDir
+            Copy-Item -Recurse (Join-Path $ScriptDir "apps\web\pkg") $tempStaticDir
+            Copy-Item -Recurse (Join-Path $ScriptDir "apps\web\style") $tempStaticDir
+            Copy-Item (Join-Path $ScriptDir "apps\web\style\main.css") (Join-Path $tempStaticDir "style.css")
+            Copy-Item (Join-Path $ScriptDir "apps\web\style\components.css") (Join-Path $tempStaticDir "components.css")
+            $realFavicon = Join-Path $ScriptDir "apps\web\public\favicon.svg"
+            if (Test-Path $realFavicon) {
+                Copy-Item $realFavicon (Join-Path $tempStaticDir "favicon.svg")
+            }
+            $markedJs = Join-Path $ScriptDir "apps\web\public\marked.min.js"
+            if (Test-Path $markedJs) {
+                Copy-Item $markedJs (Join-Path $tempStaticDir "marked.min.js")
+            }
+            $procParams.ArgumentList = @("--static-path", $tempStaticDir, "--gateway-url", "http://localhost:8000")
+        } else {
+            Write-Host "Web static files not found. Please build web first: .\beebotos-dev.ps1 build web" -ForegroundColor Red
+            return $false
+        }
     }
     $proc = Start-Process @procParams
     $proc.Id | Set-Content $pidFile -NoNewline
