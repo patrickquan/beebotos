@@ -113,62 +113,6 @@ pub enum InstallSpec {
     },
 }
 
-/// Skill 调用策略
-#[derive(Debug, Clone)]
-pub struct SkillInvocationPolicy {
-    pub user_invocable: bool,
-    pub disable_model_invocation: bool,
-    pub command_dispatch: CommandDispatch,
-    pub command_tool: Option<String>,
-    pub slash_commands: Vec<String>,
-}
-
-impl Default for SkillInvocationPolicy {
-    fn default() -> Self {
-        Self {
-            user_invocable: true,
-            disable_model_invocation: false,
-            command_dispatch: CommandDispatch::Model,
-            command_tool: None,
-            slash_commands: Vec::new(),
-        }
-    }
-}
-
-/// 命令分发方式
-#[derive(Debug, Clone, PartialEq)]
-pub enum CommandDispatch {
-    Model,
-    Tool,
-}
-
-impl Default for CommandDispatch {
-    fn default() -> Self {
-        CommandDispatch::Model
-    }
-}
-
-impl std::fmt::Display for CommandDispatch {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CommandDispatch::Model => write!(f, "model"),
-            CommandDispatch::Tool => write!(f, "tool"),
-        }
-    }
-}
-
-impl std::str::FromStr for CommandDispatch {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "model" | "" => Ok(CommandDispatch::Model),
-            "tool" => Ok(CommandDispatch::Tool),
-            _ => Err(format!("unknown dispatch kind: {}", s)),
-        }
-    }
-}
-
 /// Skill manifest（OpenClaw 格式）
 #[derive(Debug, Clone)]
 pub struct SkillManifest {
@@ -216,7 +160,6 @@ pub struct LoadedSkill {
     pub resource_dirs: SkillResources,
     pub install_specs: Vec<InstallSpec>,
     pub dependencies_satisfied: bool,
-    pub invocation: SkillInvocationPolicy,
 }
 
 /// Skill 来源目录配置
@@ -332,22 +275,6 @@ impl SkillLoader {
         // 基础依赖检查（仅检查 requires.bins 是否存在）
         let dependencies_satisfied = Self::check_basic_dependencies(&manifest.metadata.requires);
 
-        // 构建 invocation policy
-        let command_dispatch = manifest
-            .command_dispatch
-            .as_deref()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or_default();
-        let command_tool = manifest.command_tool.clone();
-
-        let invocation = SkillInvocationPolicy {
-            user_invocable: manifest.user_invocable,
-            disable_model_invocation: manifest.disable_model_invocation,
-            command_dispatch,
-            command_tool,
-            slash_commands: manifest.slash_commands.clone(),
-        };
-
         let skill = LoadedSkill {
             name: manifest.name.clone(),
             description: manifest.description.clone(),
@@ -358,7 +285,6 @@ impl SkillLoader {
             resource_dirs,
             install_specs,
             dependencies_satisfied,
-            invocation,
         };
 
         Ok(Some(skill))

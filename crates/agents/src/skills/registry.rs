@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use tokio::sync::RwLock;
 
-use crate::skills::loader::{LoadedSkill, SkillSource};
+use crate::skills::loader::LoadedSkill;
 
 /// Skill registry
 pub struct SkillRegistry {

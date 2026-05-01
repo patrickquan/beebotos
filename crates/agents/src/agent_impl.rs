@@ -197,26 +197,6 @@ impl Agent {
             .register_tool("process", Box::new(ProcessTool::new()))
             .await;
 
-        // Register skill tools if registry is available
-        if let Some(ref registry) = self.skill_registry {
-            client
-                .register_tool(
-                    "list_skills",
-                    Box::new(skills::tools::list_skills::ListSkillsTool::new(
-                        registry.clone(),
-                    )),
-                )
-                .await;
-            client
-                .register_tool(
-                    "read_skill",
-                    Box::new(skills::tools::read_skill::ReadSkillTool::new(
-                        registry.clone(),
-                    )),
-                )
-                .await;
-        }
-
         info!(
             "Registered all tools on LLM client for agent {}",
             self.config.id
