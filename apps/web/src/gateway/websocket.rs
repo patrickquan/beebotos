@@ -35,6 +35,7 @@ pub enum ChatEventType {
     Final,
     Aborted,
     Error,
+    Processing,
 }
 
 /// 聊天消息内容块

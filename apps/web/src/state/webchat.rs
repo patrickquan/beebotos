@@ -293,6 +293,12 @@ impl WebchatState {
                 self.is_sending.set(false);
                 self.set_error(event.error_message);
             }
+            ChatEventType::Processing => {
+                // Agent 开始处理，显示加载状态
+                self.is_streaming.set(true);
+                self.is_sending.set(true);
+                self.current_run_id.set(Some(event.run_id.clone()));
+            }
         }
     }
 
