@@ -959,10 +959,7 @@ impl Agent {
         };
 
         // Build system message with skills prompt
-        let mut system_content = format!(
-            "你是 {}（{}）。请保持友好、专业、有帮助的态度回答问题。",
-            self.config.name, self.config.description
-        );
+        let mut system_content = self.build_base_system_prompt();
 
         // Inject available skills prompt if registry exists
         if let Some(ref registry) = self.skill_registry {
@@ -2244,10 +2241,7 @@ impl Agent {
             };
 
         // 构建带技能提示的系统消息
-        let mut system_content = format!(
-            "你是 {}（{}）。请保持友好、专业、有帮助的态度回答问题。",
-            self.config.name, self.config.description
-        );
+        let mut system_content = self.build_base_system_prompt();
 
         // 注入可用技能提示
         if let Some(ref registry) = self.skill_registry {
