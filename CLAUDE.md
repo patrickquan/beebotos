@@ -240,6 +240,21 @@ wasm_bindgen_futures::spawn_local(async move {
 ### 打包后环境与开发环境差异
 部分问题（如 reactive disposed panic）仅在 `wasm-pack build --release` 后的生产环境出现，开发环境（debug）可能正常。验证前端修复时，**必须**用 release 模式编译测试。
 
+### Leptos 组件中 WASM 闭包必须配套清理
+使用 `Closure::wrap` + `setInterval`/`setTimeout` + `forget()` 创建的 WASM 闭包，
+在组件重新渲染（非卸载）后，旧闭包仍可能持有 disposed 的 Signal。
+必须在组件卸载时通过 `on_cleanup` 清除定时器：
+```rust
+let interval_id = window.set_interval_with_callback_and_timeout_and_arguments_0(
+    closure.as_ref().unchecked_ref(),
+    50,
+).unwrap();
+on_cleanup(move || {
+    window.clear_interval_with_handle(interval_id);
+});
+closure.forget();
+```
+
 ## Related Documentation
 
 - `AGENTS.md` — extended guide for AI coding assistants (deeper coding-style, NatSpec, deployment, security details). Read this if `CLAUDE.md` lacks the context you need.
