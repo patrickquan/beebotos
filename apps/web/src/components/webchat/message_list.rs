@@ -471,12 +471,16 @@ pub fn MessageList(
         }
         *last_state = streaming;
     }) as Box<dyn Fn()>);
-    window
+    let interval_id = window
         .set_interval_with_callback_and_timeout_and_arguments_0(
             poll_closure.as_ref().unchecked_ref(),
             50,
         )
         .unwrap();
+    // 组件卸载时清除 interval，避免访问 disposed 的 Signal
+    on_cleanup(move || {
+        window.clear_interval_with_handle(interval_id);
+    });
     poll_closure.forget();
 
     view! {
