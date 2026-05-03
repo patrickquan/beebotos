@@ -1,15 +1,17 @@
-//! LLM Provider Management Modals
+//! LLM Provider Management Modals (QwenPaw-style)
 //!
-//! Dark-theme modals: config, model management, add provider.
+//! 暗黑主题弹窗：配置、模型管理、添加供应商。
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
 use crate::api::llm_provider_service::{
-    AddModelRequest, CreateProviderRequest, LlmProvider, UpdateProviderRequest,
+    AddModelRequest, CreateProviderRequest, LlmModel, LlmProvider, UpdateModelConfigRequest,
+    UpdateProviderConfigRequest, UpdateProviderRequest,
 };
 use crate::components::modal::Modal;
 use crate::state::use_app_state;
+use crate::utils::{event_target_checked, event_target_value};
 
 // ============================================
 // Provider Configuration Modal
@@ -27,11 +29,32 @@ pub fn ProviderConfigModal(
     let show_api_key = RwSignal::new(false);
     let enabled = RwSignal::new(provider.enabled);
     let advanced_open = RwSignal::new(false);
-    let generation_params = RwSignal::new(String::from("{\n  \"max_tokens\": null\n}"));
+    let generate_kwargs = RwSignal::new(
+        provider
+            .generate_kwargs
+            .as_ref()
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "{\n  \"max_tokens\": null\n}".to_string()),
+    );
     let saving = RwSignal::new(false);
     let testing = RwSignal::new(false);
     let error_msg: RwSignal<Option<String>> = RwSignal::new(None);
-    let test_result: RwSignal<Option<String>> = RwSignal::new(None);
+    let test_result: RwSignal<Option<(String, bool)>> = RwSignal::new(None);
+
+    // 根据供应商类型显示占位提示
+    let base_url_placeholder = move || {
+        match provider.provider_id.as_str() {
+            "openai" => "https://api.openai.com/v1",
+            "anthropic" => "https://api.anthropic.com/v1",
+            "kimi-cn" | "kimi-intl" => "https://api.moonshot.cn/v1",
+            "deepseek" => "https://api.deepseek.com/v1",
+            "zhipu-cn" => "https://open.bigmodel.cn/api/paas/v4",
+            "zhipu-intl" => "https://api.z.ai/api/paas/v4",
+            "ollama" => "http://localhost:11434",
+            _ => "https://api.example.com/v1",
+        }
+        .to_string()
+    };
 
     let on_save = move |_| {
         saving.set(true);
@@ -47,6 +70,19 @@ pub fn ProviderConfigModal(
         spawn_local(async move {
             match service.update_provider(id, req).await {
                 Ok(_) => {
+                    // 如果 advanced_open，也保存 generate_kwargs
+                    if advanced_open.get() {
+                        let gk_str = generate_kwargs.get();
+                        let gk_value = serde_json::from_str(&gk_str).ok();
+                        let _ = service
+                            .update_provider_config(
+                                id,
+                                UpdateProviderConfigRequest {
+                                    generate_kwargs: gk_value,
+                                },
+                            )
+                            .await;
+                    }
                     saving.set(false);
                     on_updated.run(());
                     on_close.run(());
@@ -62,11 +98,37 @@ pub fn ProviderConfigModal(
     let on_test = move |_| {
         testing.set(true);
         test_result.set(None);
+        let service = app_state.get_value().llm_provider_service();
+        let id = provider.id;
         spawn_local(async move {
-            // TODO: Implement actual connection test API
-            gloo_timers::future::TimeoutFuture::new(1_000).await;
-            testing.set(false);
-            test_result.set(Some("连接成功 (模拟)".to_string()));
+            match service.test_provider_connection(id).await {
+                Ok(resp) => {
+                    testing.set(false);
+                    test_result.set(Some((resp.message, resp.success)));
+                }
+                Err(e) => {
+                    testing.set(false);
+                    test_result.set(Some((format!("测试失败: {}", e), false)));
+                }
+            }
+        });
+    };
+
+    let on_revoke = move |_: ()| {
+        // 清空 API Key：发送空字符串表示清除
+        saving.set(true);
+        let service = app_state.get_value().llm_provider_service();
+        let id = provider.id;
+        spawn_local(async move {
+            let req = UpdateProviderRequest {
+                name: None,
+                base_url: None,
+                api_key: Some(String::new()),
+                enabled: None,
+            };
+            let _ = service.update_provider(id, req).await;
+            saving.set(false);
+            on_updated.run(());
         });
     };
 
@@ -79,23 +141,31 @@ pub fn ProviderConfigModal(
     };
 
     view! {
-        <Modal title=format!("配置 {}", provider.name) on_close=move |_| on_close.run(())>
+        <Modal title=format!("配置 {}", provider.name) on_close=move |_| on_close.run(()) class="modal-wide">
             <div class="modal-body llm-config-modal-body">
                 {move || error_msg.get().map(|e| view! {
                     <div class="error-message">{e}</div>
                 })}
-                {move || test_result.get().map(|msg| view! {
-                    <div class="success-message">{msg}</div>
+                {move || test_result.get().map(|(msg, success)| view! {
+                    <div class={if success { "success-message" } else { "error-message" }}>{msg}</div>
                 })}
 
                 <div class="form-group required">
                     <label>"基础 URL"</label>
                     <input
                         type="text"
-                        placeholder="Ollama 端点，例如 http://localhost:11434"
+                        placeholder={base_url_placeholder}
                         prop:value=base_url.get()
+                        disabled=provider.freeze_url
                         on:input=move |ev| base_url.set(event_target_value(&ev))
                     />
+                    {if provider.freeze_url {
+                        view! {
+                            <p class="field-hint">"内置供应商，Base URL 不可修改。"</p>
+                        }.into_any()
+                    } else {
+                        view! { <span></span> }.into_any()
+                    }}
                 </div>
 
                 <div class="form-group">
@@ -115,6 +185,25 @@ pub fn ProviderConfigModal(
                             {move || if show_api_key.get() { "🙈" } else { "👁️" }}
                         </button>
                     </div>
+                    <p class="field-hint">
+                        {if provider.api_key_masked.is_some() {
+                            "已配置 API 密钥。留空则保留现有密钥，输入新值则覆盖。"
+                        } else {
+                            "尚未配置 API 密钥。"
+                        }}
+                    </p>
+                </div>
+
+                <div class="form-group">
+                    <label>"启用"</label>
+                    <label class="checkbox-label">
+                        <input
+                            type="checkbox"
+                            prop:checked=enabled.get()
+                            on:change=move |ev| enabled.set(event_target_checked(&ev))
+                        />
+                        "启用此供应商"
+                    </label>
                 </div>
 
                 // Advanced Config
@@ -135,8 +224,8 @@ pub fn ProviderConfigModal(
                                 <textarea
                                     class="code-textarea"
                                     rows="6"
-                                    prop:value=generation_params.get()
-                                    on:input=move |ev| generation_params.set(event_target_value(&ev))
+                                    prop:value=generate_kwargs.get()
+                                    on:input=move |ev| generate_kwargs.set(event_target_value(&ev))
                                 />
                                 <p class="field-hint">
                                     "使用 JSON 格式表示的生成参数配置项，会被展开传入到生成请求（"
@@ -151,15 +240,34 @@ pub fn ProviderConfigModal(
                 </div>
             </div>
             <div class="modal-footer llm-config-footer">
-                <button
-                    class="btn btn-test"
-                    on:click=on_test
-                    disabled=move || testing.get()
-                >
-                    <span>"🔗"</span>
-                    {if testing.get() { "测试中..." } else { "测试连接" }}
-                </button>
+                {if provider.support_connection_check {
+                    view! {
+                        <button
+                            class="btn btn-test"
+                            on:click=on_test
+                            disabled=move || testing.get()
+                        >
+                            <span>"🔗"</span>
+                            {if testing.get() { "测试中..." } else { "测试连接" }}
+                        </button>
+                    }.into_any()
+                } else {
+                    view! { <span></span> }.into_any()
+                }}
                 <div class="footer-spacer" />
+                {if provider.api_key_masked.is_some() {
+                    view! {
+                        <button
+                            class="btn btn-text danger"
+                            on:click=move |_| on_revoke(())
+                            disabled=move || saving.get()
+                        >
+                            "撤销授权"
+                        </button>
+                    }.into_any()
+                } else {
+                    view! { <span></span> }.into_any()
+                }}
                 <button class="btn btn-secondary" on:click=move |_| on_close.run(())>
                     "取消"
                 </button>
@@ -172,6 +280,156 @@ pub fn ProviderConfigModal(
                 </button>
             </div>
         </Modal>
+    }
+}
+
+// ============================================
+// Model Item Component (extracted to avoid closure capture issues)
+// ============================================
+#[component]
+fn ModelItem(
+    model: LlmModel,
+    is_builtin: bool,
+    editing_model: RwSignal<Option<i64>>,
+    edit_display_name: RwSignal<String>,
+    testing_model: RwSignal<Option<i64>>,
+    probing_model: RwSignal<Option<i64>>,
+    #[prop(into)] on_test: Callback<i64>,
+    #[prop(into)] on_set_default: Callback<i64>,
+    #[prop(into)] on_probe: Callback<i64>,
+    #[prop(into)] on_delete: Callback<i64>,
+    #[prop(into)] on_save_edit: Callback<i64>,
+) -> impl IntoView {
+    let model_id = model.id;
+    let is_default = model.is_default_model;
+    let model_name = model.name.clone();
+    let model_display_name = model.display_name.clone();
+    let model_display_name_store = StoredValue::new(model_display_name.clone());
+
+    let is_editing = move || editing_model.get() == Some(model_id);
+
+    let mut tags = Vec::new();
+    if model.supports_image == Some(true) || model.supports_multimodal == Some(true) {
+        tags.push(("图片", "image"));
+    }
+    if model.supports_video == Some(true) {
+        tags.push(("视频", "video"));
+    }
+    if tags.is_empty() {
+        if model.supports_image.is_none()
+            && model.supports_video.is_none()
+            && model.supports_multimodal.is_none()
+        {
+            tags.push(("未探测", "unknown"));
+        } else {
+            tags.push(("纯文本", "text"));
+        }
+    }
+
+    view! {
+        <div class="model-item" class:default=is_default>
+            <div class="model-info">
+                <span class="model-name">{model_name.clone()}</span>
+                {model_display_name.clone().map(|d| view! {
+                    <span class="model-display">{"("}{d}{")"}</span>
+                })}
+                <div class="model-tags">
+                    {if is_default {
+                        view! { <span class="model-tag default">"默认"</span> }.into_any()
+                    } else {
+                        view! { <span></span> }.into_any()
+                    }}
+                    <span class={if is_builtin { "model-tag builtin" } else { "model-tag user" }}>
+                        {if is_builtin { "内置" } else { "用户添加" }}
+                    </span>
+                    {tags.into_iter().map(|(label, kind)| view! {
+                        <span class={format!("model-tag {}", kind)}>{label}</span>
+                    }).collect_view()}
+                </div>
+            </div>
+            <div class="model-actions">
+                {move || if is_editing() {
+                    view! {
+                        <input
+                            type="text"
+                            class="edit-display-name-input"
+                            placeholder="显示名称"
+                            prop:value=edit_display_name.get()
+                            on:input=move |ev| edit_display_name.set(event_target_value(&ev))
+                            on:keyup=move |ev| {
+                                if ev.key() == "Enter" {
+                                    on_save_edit.run(model_id);
+                                }
+                            }
+                        />
+                        <button
+                            class="btn btn-sm btn-text"
+                            on:click=move |_| on_save_edit.run(model_id)
+                        >
+                            "保存"
+                        </button>
+                    }.into_any()
+                } else {
+                    view! {
+                        <button
+                            class="btn btn-sm btn-text"
+                            on:click=move |_| on_test.run(model_id)
+                            disabled=move || testing_model.get() == Some(model_id)
+                        >
+                            {if testing_model.get() == Some(model_id) {
+                                "测试中..."
+                            } else {
+                                "测试"
+                            }}
+                        </button>
+                        {if !is_default {
+                            view! {
+                                <button
+                                    class="btn btn-sm btn-text"
+                                    on:click=move |_| on_set_default.run(model_id)
+                                >
+                                    "设为默认"
+                                </button>
+                            }.into_any()
+                        } else {
+                            view! { <span></span> }.into_any()
+                        }}
+                        <button
+                            class="btn btn-sm btn-text"
+                            on:click=move |_| {
+                                editing_model.set(Some(model_id));
+                                edit_display_name.set(model_display_name_store.get_value().unwrap_or_default());
+                            }
+                        >
+                            "配置"
+                        </button>
+                        <button
+                            class="btn btn-sm btn-text"
+                            on:click=move |_| on_probe.run(model_id)
+                            disabled=move || probing_model.get() == Some(model_id)
+                        >
+                            {if probing_model.get() == Some(model_id) {
+                                "探测中..."
+                            } else {
+                                "探测多模态"
+                            }}
+                        </button>
+                        {if !is_builtin {
+                            view! {
+                                <button
+                                    class="btn btn-sm btn-text danger"
+                                    on:click=move |_| on_delete.run(model_id)
+                                >
+                                    "删除"
+                                </button>
+                            }.into_any()
+                        } else {
+                            view! { <span></span> }.into_any()
+                        }}
+                    }.into_any()
+                }}
+            </div>
+        </div>
     }
 }
 
@@ -190,7 +448,12 @@ pub fn ModelManageModal(
     let new_model_name = RwSignal::new(String::new());
     let adding = RwSignal::new(false);
     let discovering = RwSignal::new(false);
+    let testing_model: RwSignal<Option<i64>> = RwSignal::new(None);
+    let probing_model: RwSignal<Option<i64>> = RwSignal::new(None);
+    let editing_model: RwSignal<Option<i64>> = RwSignal::new(None);
+    let edit_display_name = RwSignal::new(String::new());
     let error_msg: RwSignal<Option<String>> = RwSignal::new(None);
+    let success_msg: RwSignal<Option<String>> = RwSignal::new(None);
 
     let add_model_action = move || {
         let name = new_model_name.get();
@@ -200,6 +463,7 @@ pub fn ModelManageModal(
         }
         adding.set(true);
         error_msg.set(None);
+        success_msg.set(None);
         let service = app_state.get_value().llm_provider_service();
         let provider_id = provider.id;
         let req = AddModelRequest {
@@ -211,6 +475,7 @@ pub fn ModelManageModal(
                 Ok(_) => {
                     adding.set(false);
                     new_model_name.set(String::new());
+                    success_msg.set(Some("添加成功".to_string()));
                     on_updated.run(());
                 }
                 Err(e) => {
@@ -224,11 +489,28 @@ pub fn ModelManageModal(
     let on_discover_models = move |_| {
         discovering.set(true);
         error_msg.set(None);
+        success_msg.set(None);
+        let service = app_state.get_value().llm_provider_service();
+        let provider_id = provider.id;
         spawn_local(async move {
-            // TODO: Implement actual model discovery API
-            gloo_timers::future::TimeoutFuture::new(1_500).await;
-            discovering.set(false);
-            error_msg.set(Some("自动发现功能暂未实现".to_string()));
+            match service.discover_models(provider_id).await {
+                Ok(resp) => {
+                    discovering.set(false);
+                    if resp.added_count > 0 {
+                        success_msg.set(Some(format!(
+                            "发现 {} 个新模型，已自动添加",
+                            resp.added_count
+                        )));
+                    } else {
+                        success_msg.set(Some("未发现新模型".to_string()));
+                    }
+                    on_updated.run(());
+                }
+                Err(e) => {
+                    discovering.set(false);
+                    error_msg.set(Some(format!("发现失败: {}", e)));
+                }
+            }
         });
     };
 
@@ -250,10 +532,81 @@ pub fn ModelManageModal(
         });
     };
 
+    let on_test_model = move |model_id: i64, model_name: String| {
+        testing_model.set(Some(model_id));
+        error_msg.set(None);
+        success_msg.set(None);
+        let service = app_state.get_value().llm_provider_service();
+        let provider_id = provider.id;
+        spawn_local(async move {
+            match service.test_model_connection(provider_id, model_name).await {
+                Ok(resp) => {
+                    testing_model.set(None);
+                    if resp.success {
+                        success_msg.set(Some(resp.message));
+                    } else {
+                        error_msg.set(Some(resp.message));
+                    }
+                }
+                Err(e) => {
+                    testing_model.set(None);
+                    error_msg.set(Some(format!("测试失败: {}", e)));
+                }
+            }
+        });
+    };
+
+    let on_probe_multimodal = move |model_id: i64| {
+        probing_model.set(Some(model_id));
+        error_msg.set(None);
+        success_msg.set(None);
+        let service = app_state.get_value().llm_provider_service();
+        let provider_id = provider.id;
+        spawn_local(async move {
+            match service.probe_model_multimodal(provider_id, model_id).await {
+                Ok(resp) => {
+                    probing_model.set(None);
+                    if resp.success {
+                        success_msg.set(Some(format!(
+                            "多模态探测完成：图片={}, 视频={}",
+                            if resp.supports_image { "支持" } else { "不支持" },
+                            if resp.supports_video { "支持" } else { "不支持" }
+                        )));
+                        on_updated.run(());
+                    } else {
+                        error_msg.set(Some(resp.message));
+                    }
+                }
+                Err(e) => {
+                    probing_model.set(None);
+                    error_msg.set(Some(format!("探测失败: {}", e)));
+                }
+            }
+        });
+    };
+
+    let on_save_edit = move |model_id: i64| {
+        let display_name = edit_display_name.get();
+        let display_name_opt = if display_name.trim().is_empty() {
+            None
+        } else {
+            Some(display_name.trim().to_string())
+        };
+        let service = app_state.get_value().llm_provider_service();
+        let provider_id = provider.id;
+        spawn_local(async move {
+            let req = UpdateModelConfigRequest {
+                display_name: display_name_opt,
+            };
+            let _ = service.update_model_config(provider_id, model_id, req).await;
+            editing_model.set(None);
+            on_updated.run(());
+        });
+    };
+
     // Filter models by search
-    let filtered_models = move || {
+    let filtered_models = move |models: Vec<LlmModel>| -> Vec<LlmModel> {
         let query = search_query.get().to_lowercase();
-        let models = provider.models.clone();
         if query.is_empty() {
             models
         } else {
@@ -271,10 +624,13 @@ pub fn ModelManageModal(
     };
 
     view! {
-        <Modal title=format!("{} — 模型管理", provider.name) on_close=move |_| on_close.run(())>
+        <Modal title=format!("{} — 模型管理", provider.name) on_close=move |_| on_close.run(()) class="modal-wide">
             <div class="modal-body model-manage-body">
                 {move || error_msg.get().map(|e| view! {
                     <div class="error-message">{e}</div>
+                })}
+                {move || success_msg.get().map(|msg| view! {
+                    <div class="success-message">{msg}</div>
                 })}
 
                 // Search
@@ -291,8 +647,10 @@ pub fn ModelManageModal(
                 // Model list
                 <div class="model-list-container">
                     {move || {
-                        let models = filtered_models();
-                        if models.is_empty() {
+                        let builtin = filtered_models(provider.models.clone());
+                        let extra = filtered_models(provider.extra_models.clone());
+
+                        if builtin.is_empty() && extra.is_empty() {
                             view! {
                                 <div class="empty-state compact">
                                     <p>"暂无模型"</p>
@@ -301,45 +659,62 @@ pub fn ModelManageModal(
                         } else {
                             view! {
                                 <div class="model-list">
-                                    {models.into_iter().map(|model| {
-                                        let model_id = model.id;
-                                        let model_id_for_delete = model.id;
+                                    // Built-in models section
+                                    {if !builtin.is_empty() {
                                         view! {
-                                            <div class="model-item" class:default=model.is_default_model>
-                                                <div class="model-info">
-                                                    <span class="model-name">{model.name.clone()}</span>
-                                                    {model.display_name.clone().map(|d| view! {
-                                                        <span class="model-display">{"("}{d}{")"}</span>
-                                                    })}
-                                                    {if model.is_default_model {
-                                                        view! { <span class="badge default">"默认"</span> }.into_any()
-                                                    } else {
-                                                        view! { <span></span> }.into_any()
-                                                    }}
-                                                </div>
-                                                <div class="model-actions">
-                                                    {if !model.is_default_model {
-                                                        view! {
-                                                            <button
-                                                                class="btn btn-sm btn-text"
-                                                                on:click=move |_| on_set_default_model(model_id)
-                                                            >
-                                                                "设为默认"
-                                                            </button>
-                                                        }.into_any()
-                                                    } else {
-                                                        view! { <span></span> }.into_any()
-                                                    }}
-                                                    <button
-                                                        class="btn btn-sm btn-text danger"
-                                                        on:click=move |_| on_delete_model(model_id_for_delete)
-                                                    >
-                                                        "删除"
-                                                    </button>
-                                                </div>
+                                            <div class="model-section-header">
+                                                <span>"内置模型"</span>
                                             </div>
-                                        }
-                                    }).collect_view()}
+                                            {builtin.into_iter().map(|model| {
+                                                let model_name = model.name.clone();
+                                                view! {
+                                                    <ModelItem
+                                                        model=model
+                                                        is_builtin=true
+                                                        editing_model
+                                                        edit_display_name
+                                                        testing_model
+                                                        probing_model
+                                                        on_test=move |id: i64| on_test_model(id, model_name.clone())
+                                                        on_set_default=on_set_default_model
+                                                        on_probe=on_probe_multimodal
+                                                        on_delete=move |_| {}
+                                                        on_save_edit=on_save_edit
+                                                    />
+                                                }
+                                            }).collect_view()}
+                                        }.into_any()
+                                    } else {
+                                        view! { <span></span> }.into_any()
+                                    }}
+                                    // Extra models section
+                                    {if !extra.is_empty() {
+                                        view! {
+                                            <div class="model-section-header">
+                                                <span>"用户添加模型"</span>
+                                            </div>
+                                            {extra.into_iter().map(|model| {
+                                                let model_name = model.name.clone();
+                                                view! {
+                                                    <ModelItem
+                                                        model=model
+                                                        is_builtin=false
+                                                        editing_model
+                                                        edit_display_name
+                                                        testing_model
+                                                        probing_model
+                                                        on_test=move |id: i64| on_test_model(id, model_name.clone())
+                                                        on_set_default=on_set_default_model
+                                                        on_probe=on_probe_multimodal
+                                                        on_delete=on_delete_model
+                                                        on_save_edit=on_save_edit
+                                                    />
+                                                }
+                                            }).collect_view()}
+                                        }.into_any()
+                                    } else {
+                                        view! { <span></span> }.into_any()
+                                    }}
                                 </div>
                             }.into_any()
                         }
@@ -369,14 +744,20 @@ pub fn ModelManageModal(
                 </div>
             </div>
             <div class="modal-footer model-manage-footer">
-                <button
-                    class="btn btn-secondary"
-                    on:click=on_discover_models
-                    disabled=move || discovering.get()
-                >
-                    <span>"🔍"</span>
-                    {if discovering.get() { "发现中..." } else { "自动发现模型" }}
-                </button>
+                {if provider.support_model_discovery {
+                    view! {
+                        <button
+                            class="btn btn-secondary"
+                            on:click=on_discover_models
+                            disabled=move || discovering.get()
+                        >
+                            <span>"🔍"</span>
+                            {if discovering.get() { "发现中..." } else { "自动发现模型" }}
+                        </button>
+                    }.into_any()
+                } else {
+                    view! { <span></span> }.into_any()
+                }}
                 <div class="footer-spacer" />
                 <button class="btn btn-secondary" on:click=move |_| on_close.run(())>
                     "关闭"
@@ -451,7 +832,7 @@ pub fn AddProviderModal(
     };
 
     view! {
-        <Modal title="添加自定义提供商" on_close=move |_| on_close.run(())>
+        <Modal title="添加自定义提供商" on_close=move |_| on_close.run(()) class="modal-wide">
             <div class="modal-body add-provider-body">
                 {move || error_msg.get().map(|e| view! {
                     <div class="error-message">{e}</div>

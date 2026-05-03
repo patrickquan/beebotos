@@ -641,14 +641,14 @@ impl WizardState {
                     auto_migrate: true,
                 };
                 self.models = ModelsConfigDraft {
-                    default_provider: "kimi".to_string(),
-                    fallback_chain: vec!["kimi".to_string()],
+                    default_provider: "kimi-cn".to_string(),
+                    fallback_chain: vec!["kimi-cn".to_string()],
                     cost_optimization: false,
                     max_tokens: 4096,
                     request_timeout: 60,
                     system_prompt: "You are a helpful assistant.".to_string(),
                     providers: vec![ProviderDraft {
-                        name: "kimi".to_string(),
+                        name: "kimi-cn".to_string(),
                         api_key: String::new(),
                         model: "moonshot-v1-8k".to_string(),
                         base_url: "https://api.moonshot.cn".to_string(),
@@ -690,13 +690,13 @@ impl WizardState {
             "standard" => {
                 self.apply_template("minimal");
                 self.models.fallback_chain = vec![
-                    "kimi".to_string(),
+                    "kimi-cn".to_string(),
                     "openai".to_string(),
                     "deepseek".to_string(),
                 ];
                 self.models.providers = vec![
                     ProviderDraft {
-                        name: "kimi".to_string(),
+                        name: "kimi-cn".to_string(),
                         api_key: String::new(),
                         model: "moonshot-v1-8k".to_string(),
                         base_url: "https://api.moonshot.cn".to_string(),

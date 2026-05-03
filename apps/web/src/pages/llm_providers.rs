@@ -1,13 +1,55 @@
-//! LLM Provider Management Page
+//! LLM Provider Management Page (QwenPaw-style)
 //!
-//! Dark theme provider grid with default LLM selector.
+//! 暗黑主题供应商卡片网格，支持 hover 操作、三色状态、标签体系。
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
-use crate::api::llm_provider_service::LlmProvider;
+use crate::api::llm_provider_service::{
+    LlmProvider, SetActiveLlmRequest,
+};
+use crate::components::modal::Modal;
 use crate::pages::llm_provider_modals::{AddProviderModal, ModelManageModal, ProviderConfigModal};
 use crate::state::use_app_state;
+use crate::utils::event_target_value;
+
+/// 计算供应商状态
+/// - 可用（青色）：已启用，已配置（有 Base URL 且满足 API Key 要求），且至少有一个模型
+/// - 部分（橙色）：已启用，已配置，但无模型
+/// - 不可用（灰色）：未启用或未配置
+fn provider_status(provider: &LlmProvider) -> (&'static str, &'static str, &'static str, &'static str) {
+    let has_config = provider.base_url.is_some()
+        && !provider.base_url.as_ref().unwrap().is_empty();
+    let has_key = provider.api_key_masked.is_some();
+    let all_models = provider.all_models();
+    let has_models = !all_models.is_empty();
+    let key_ok = !provider.require_api_key || has_key;
+
+    if !provider.enabled {
+        return ("offline", "disabled", "不可用", "已禁用");
+    }
+    if !has_config {
+        return ("offline", "disabled", "不可用", "未配置 Base URL");
+    }
+    if !key_ok {
+        return ("offline", "disabled", "不可用", "未配置 API Key");
+    }
+    if !has_models {
+        return ("partial", "partial", "部分可用", "无模型");
+    }
+    ("online", "enabled", "可用", "正常")
+}
+
+/// 获取供应商标签列表
+fn provider_tags(provider: &LlmProvider) -> Vec<(&'static str, &'static str)> {
+    let mut tags = Vec::new();
+    if provider.is_custom {
+        tags.push(("自定义", "custom"));
+    } else {
+        tags.push(("内置", "builtin"));
+    }
+    tags
+}
 
 #[component]
 pub fn LlmProvidersPage() -> impl IntoView {
@@ -17,34 +59,45 @@ pub fn LlmProvidersPage() -> impl IntoView {
     let is_loading = RwSignal::new(false);
     let error_msg: RwSignal<Option<String>> = RwSignal::new(None);
     let search_query = RwSignal::new(String::new());
+    let save_success: RwSignal<Option<String>> = RwSignal::new(None);
 
     // Modal states
     let selected_provider: RwSignal<Option<LlmProvider>> = RwSignal::new(None);
     let show_config_modal = RwSignal::new(false);
     let show_model_modal = RwSignal::new(false);
     let show_add_modal = RwSignal::new(false);
+    let show_delete_confirm: RwSignal<Option<LlmProvider>> = RwSignal::new(None);
 
-    // Default LLM selection
-    let default_provider_id: RwSignal<Option<i64>> = RwSignal::new(None);
-    let default_model_name: RwSignal<Option<String>> = RwSignal::new(None);
+    // Active LLM selection
+    let active_provider_id: RwSignal<Option<i64>> = RwSignal::new(None);
+    let active_model_name: RwSignal<Option<String>> = RwSignal::new(None);
+    let saved_provider_id: RwSignal<Option<i64>> = RwSignal::new(None);
+    let saved_model_name: RwSignal<Option<String>> = RwSignal::new(None);
 
     let fetch_providers = move || {
         is_loading.set(true);
         error_msg.set(None);
+        save_success.set(None);
         let service = app_state.get_value().llm_provider_service();
         spawn_local(async move {
             match service.list_providers().await {
                 Ok(resp) => {
-                    // Find default provider and model
-                    for p in &resp.providers {
-                        if p.is_default_provider {
-                            default_provider_id.set(Some(p.id));
-                            if let Some(m) = p.models.iter().find(|m| m.is_default_model) {
-                                default_model_name.set(Some(m.name.clone()));
-                            } else if let Some(m) = p.models.first() {
-                                default_model_name.set(Some(m.name.clone()));
+                    // Try to get active LLM
+                    if let Ok(active) = service.get_active_llm().await {
+                        active_provider_id.set(Some(active.provider_id));
+                        active_model_name.set(Some(active.model_name.clone()));
+                        saved_provider_id.set(Some(active.provider_id));
+                        saved_model_name.set(Some(active.model_name));
+                    } else {
+                        // Fallback: find default provider
+                        for p in &resp.providers {
+                            if p.is_default_provider {
+                                active_provider_id.set(Some(p.id));
+                                if let Some(m) = p.default_model() {
+                                    active_model_name.set(Some(m.name.clone()));
+                                }
+                                break;
                             }
-                            break;
                         }
                     }
                     providers.set(Some(resp.providers));
@@ -85,13 +138,158 @@ pub fn LlmProvidersPage() -> impl IntoView {
         })
     };
 
-    // Save default LLM
-    let on_save_default = move || {
-        if let Some(pid) = default_provider_id.get() {
+    // Get available providers (enabled + configured + authorized) for active LLM dropdown
+    let available_providers = move || {
+        providers.get().map(|list| {
+            list.into_iter()
+                .filter(|p| {
+                    let has_config = p.base_url.is_some()
+                        && !p.base_url.as_ref().unwrap().is_empty();
+                    let has_key = p.api_key_masked.is_some();
+                    let key_ok = !p.require_api_key || has_key;
+                    p.enabled && has_config && key_ok
+                })
+                .collect::<Vec<_>>()
+        })
+    };
+
+    // Save active LLM
+    let on_save_active = move || {
+        if let (Some(pid), Some(mname)) = (active_provider_id.get(), active_model_name.get()) {
             let service = app_state.get_value().llm_provider_service();
             spawn_local(async move {
-                let _ = service.set_default_provider(pid).await;
+                let req = SetActiveLlmRequest {
+                    provider_id: pid,
+                    model_name: mname.clone(),
+                };
+                match service.set_active_llm(req).await {
+                    Ok(_) => {
+                        save_success.set(Some("默认 LLM 已保存".to_string()));
+                        saved_provider_id.set(Some(pid));
+                        saved_model_name.set(Some(mname));
+                        // Refresh after a short delay
+                        gloo_timers::future::TimeoutFuture::new(500).await;
+                        refresh.get_value()();
+                    }
+                    Err(e) => {
+                        save_success.set(Some(format!("保存失败: {}", e)));
+                    }
+                }
             });
+        }
+    };
+
+    let on_delete_provider = move |provider: LlmProvider| {
+        let service = app_state.get_value().llm_provider_service();
+        spawn_local(async move {
+            let _ = service.delete_provider(provider.id).await;
+            show_delete_confirm.set(None);
+            refresh.get_value()();
+        });
+    };
+
+    // Remote provider card renderer
+    let render_remote_card = move |provider: LlmProvider| {
+        let icon = provider.icon.clone().unwrap_or_else(|| "🔧".to_string());
+        let color = provider.icon_color.clone().unwrap_or_else(|| "#64748b".to_string());
+        let provider_for_config = provider.clone();
+        let provider_for_model = provider.clone();
+        let provider_for_delete = provider.clone();
+        let (dot_class, desc_class, status_label, _status_desc) = provider_status(&provider);
+        let tags = provider_tags(&provider);
+        let all_models = provider.all_models();
+        let model_count = all_models.len();
+
+        view! {
+            <div class="provider-card" class:custom=provider.is_custom>
+                // Card Header: Icon + Status
+                <div class="provider-card-header">
+                    <div
+                        class="provider-avatar"
+                        style=format!("background: {}; color: white;", color)
+                    >
+                        {icon}
+                    </div>
+                    <div class="card-status-header">
+                        <span class={format!("status-dot {}", dot_class)}></span>
+                        <span class={format!("status-desc {}", desc_class)}>{status_label}</span>
+                    </div>
+                </div>
+
+                // Title Row: Name + Tags
+                <div class="provider-name-row">
+                    <h4>{provider.name.clone()}</h4>
+                    {tags.into_iter().map(|(label, kind)| view! {
+                        <span class={format!("provider-tag {}", kind)}>{label}</span>
+                    }).collect_view()}
+                </div>
+
+                // Info Section
+                <div class="provider-card-body">
+                    <div class="provider-detail">
+                        <span class="detail-label">"Base URL"</span>
+                        <span class="detail-value url-value">
+                            {provider.base_url.clone().unwrap_or_else(|| "未配置".to_string())}
+                        </span>
+                    </div>
+                    <div class="provider-detail">
+                        <span class="detail-label">"API Key"</span>
+                        <span class="detail-value">
+                            {if provider.api_key_masked.is_some() {
+                                view! { <span class="status-set">"已设置"</span> }.into_any()
+                            } else {
+                                view! { <span class="status-unset">"未设置"</span> }.into_any()
+                            }}
+                        </span>
+                    </div>
+                    <div class="provider-detail">
+                        <span class="detail-label">"Model"</span>
+                        <span class="detail-value">
+                            {if model_count == 0 {
+                                "暂无模型".to_string()
+                            } else {
+                                format!("{} 个模型", model_count)
+                            }}
+                        </span>
+                    </div>
+                </div>
+
+                // Actions - hover only
+                <div class="provider-card-footer">
+                    <button
+                        class="btn btn-sm btn-secondary"
+                        on:click=move |_| {
+                            selected_provider.set(Some(provider_for_model.clone()));
+                            show_model_modal.set(true);
+                        }
+                    >
+                        "模型"
+                    </button>
+                    <button
+                        class="btn btn-sm btn-secondary"
+                        on:click=move |_| {
+                            selected_provider.set(Some(provider_for_config.clone()));
+                            show_config_modal.set(true);
+                        }
+                    >
+                        "设置"
+                    </button>
+                    {if provider.is_custom {
+                        view! {
+                            <button
+                                class="btn btn-sm btn-text danger"
+                                on:click=move |_| {
+                                    show_delete_confirm.set(Some(provider_for_delete.clone()));
+                                }
+                            >
+                                "删除"
+                            </button>
+                        }.into_any()
+                    } else {
+                        view! { <span></span> }.into_any()
+                    }}
+                </div>
+            </div>
         }
     };
 
@@ -106,28 +304,47 @@ pub fn LlmProvidersPage() -> impl IntoView {
 
             <h1 class="page-title">"模型"</h1>
 
-            // Default LLM Section
+            // Active LLM Section (ModelsSection style)
             <div class="default-llm-section">
-                <h3>"默认LLM"</h3>
+                <div class="slot-header">
+                    <span class="slot-title">"默认 LLM"</span>
+                    {move || {
+                        let pid = saved_provider_id.get();
+                        let mname = saved_model_name.get();
+                        if pid.is_some() && mname.is_some() {
+                            let providers_list = providers.get().unwrap_or_default();
+                            let provider_name = providers_list.iter()
+                                .find(|p| Some(p.id) == pid)
+                                .map(|p| p.name.clone())
+                                .unwrap_or_default();
+                            let badge_text = format!("{} / {}", provider_name, mname.unwrap_or_default());
+                            view! {
+                                <span class="current-model-badge">{badge_text}</span>
+                            }.into_any()
+                        } else {
+                            view! { <span></span> }.into_any()
+                        }
+                    }}
+                </div>
                 <div class="default-llm-form">
                     <div class="form-row">
                         <div class="form-group">
                             <label>"提供商"</label>
                             <select
-                                prop:value=move || default_provider_id.get().map(|id| id.to_string()).unwrap_or_default()
+                                prop:value=move || active_provider_id.get().map(|id| id.to_string()).unwrap_or_default()
                                 on:change=move |ev| {
                                     let val = event_target_value(&ev);
                                     if let Ok(id) = val.parse::<i64>() {
-                                        default_provider_id.set(Some(id));
-                                        // Update default model selection
+                                        active_provider_id.set(Some(id));
+                                        // Update model selection
                                         if let Some(list) = providers.get() {
                                             if let Some(p) = list.iter().find(|p| p.id == id) {
-                                                if let Some(m) = p.models.iter().find(|m| m.is_default_model) {
-                                                    default_model_name.set(Some(m.name.clone()));
-                                                } else if let Some(m) = p.models.first() {
-                                                    default_model_name.set(Some(m.name.clone()));
+                                                if let Some(m) = p.default_model() {
+                                                    active_model_name.set(Some(m.name.clone()));
+                                                } else if let Some(m) = p.all_models().first() {
+                                                    active_model_name.set(Some(m.name.clone()));
                                                 } else {
-                                                    default_model_name.set(None);
+                                                    active_model_name.set(None);
                                                 }
                                             }
                                         }
@@ -135,8 +352,8 @@ pub fn LlmProvidersPage() -> impl IntoView {
                                 }
                             >
                                 <option value="">"选择提供商 (必须已授权)"</option>
-                                {move || providers.get().unwrap_or_default().into_iter().map(|p| {
-                                    let selected = default_provider_id.get() == Some(p.id);
+                                {move || available_providers().unwrap_or_default().into_iter().map(|p| {
+                                    let selected = active_provider_id.get() == Some(p.id);
                                     view! {
                                         <option value={p.id.to_string()} selected={selected}>
                                             {p.name.clone()}
@@ -148,23 +365,23 @@ pub fn LlmProvidersPage() -> impl IntoView {
                         <div class="form-group">
                             <label>"模型"</label>
                             <select
-                                prop:value=move || default_model_name.get().unwrap_or_default()
+                                prop:value=move || active_model_name.get().unwrap_or_default()
                                 on:change=move |ev| {
                                     let val = event_target_value(&ev);
                                     if !val.is_empty() {
-                                        default_model_name.set(Some(val));
+                                        active_model_name.set(Some(val));
                                     }
                                 }
                             >
                                 <option value="">"请先添加模型"</option>
                                 {move || {
-                                    let pid = default_provider_id.get();
+                                    let pid = active_provider_id.get();
                                     let list = providers.get().unwrap_or_default();
                                     let models = pid.and_then(|id| {
-                                        list.iter().find(|p| p.id == id).map(|p| p.models.clone())
+                                        list.iter().find(|p| p.id == id).map(|p| p.all_models().into_iter().cloned().collect::<Vec<_>>())
                                     }).unwrap_or_default();
                                     models.into_iter().map(|m| {
-                                        let selected = default_model_name.get().as_ref() == Some(&m.name);
+                                        let selected = active_model_name.get().as_ref() == Some(&m.name);
                                         view! {
                                             <option value={m.name.clone()} selected={selected}>
                                                 {m.display_name.clone().unwrap_or_else(|| m.name.clone())}
@@ -174,17 +391,34 @@ pub fn LlmProvidersPage() -> impl IntoView {
                                 }}
                             </select>
                         </div>
-                        <button
-                            class="btn btn-primary save-default-btn"
-                            on:click=move |_| on_save_default()
-                            disabled=move || default_provider_id.get().is_none()
-                        >
-                            "保存"
-                        </button>
                     </div>
+                    {move || save_success.get().map(|msg| view! {
+                        <p class="form-hint success-hint">{msg}</p>
+                    })}
                     <p class="form-hint">
                         "在这里设置全局默认的 LLM 模型。你也可以在聊天页面为具体 Agent 单独选择使用的模型。"
                     </p>
+                </div>
+                <div class="slot-actions">
+                    {move || {
+                        let current_pid = active_provider_id.get();
+                        let current_mname = active_model_name.get();
+                        let saved_pid = saved_provider_id.get();
+                        let saved_mname = saved_model_name.get();
+                        let is_saved = current_pid.is_some()
+                            && current_mname.is_some()
+                            && saved_pid == current_pid
+                            && saved_mname == current_mname;
+                        view! {
+                            <button
+                                class="btn btn-primary save-default-btn"
+                                on:click=move |_| on_save_active()
+                                disabled=move || active_provider_id.get().is_none() || active_model_name.get().is_none() || is_saved
+                            >
+                                {if is_saved { "已保存" } else { "保存" }}
+                            </button>
+                        }
+                    }}
                 </div>
             </div>
 
@@ -192,23 +426,25 @@ pub fn LlmProvidersPage() -> impl IntoView {
             <div class="providers-section">
                 <div class="section-header">
                     <h3>"提供商"</h3>
-                    <div class="section-actions">
-                        <div class="search-box">
-                            <span class="search-icon">"🔍"</span>
-                            <input
-                                type="text"
-                                placeholder="搜索提供商..."
-                                prop:value=search_query.get()
-                                on:input=move |ev| search_query.set(event_target_value(&ev))
-                            />
+                    <div class="header-right">
+                        <div class="search-row">
+                            <div class="search-box">
+                                <span class="search-icon">"🔍"</span>
+                                <input
+                                    type="text"
+                                    placeholder="搜索提供商..."
+                                    prop:value=search_query.get()
+                                    on:input=move |ev| search_query.set(event_target_value(&ev))
+                                />
+                            </div>
+                            <button
+                                class="btn btn-icon"
+                                on:click=move |_| refresh.get_value()()
+                                title="刷新"
+                            >
+                                "🔄"
+                            </button>
                         </div>
-                        <button
-                            class="btn btn-icon"
-                            on:click=move |_| refresh.get_value()()
-                            title="刷新"
-                        >
-                            "🔄"
-                        </button>
                         <button
                             class="btn btn-primary add-provider-btn"
                             on:click=move |_| show_add_modal.set(true)
@@ -256,116 +492,12 @@ pub fn LlmProvidersPage() -> impl IntoView {
                             }
                         } else {
                             view! {
-                                <div class="providers-grid">
-                                    {list.into_iter().map(|provider| {
-                                        let icon = provider.icon.clone().unwrap_or_else(|| "🔧".to_string());
-                                        let color = provider.icon_color.clone().unwrap_or_else(|| "#64748b".to_string());
-                                        let provider_for_config = provider.clone();
-                                        let provider_for_model = provider.clone();
-                                        let has_api_key = provider.api_key_masked.is_some();
-                                        let model_count = provider.models.len();
-                                        let default_model = provider.models.iter()
-                                            .find(|m| m.is_default_model)
-                                            .or_else(|| provider.models.first());
-
-                                        view! {
-                                            <div class="provider-card">
-                                                <div class="provider-card-header">
-                                                    <div
-                                                        class="provider-avatar"
-                                                        style=format!("background: {}; color: white;", color)
-                                                    >
-                                                        {icon}
-                                                    </div>
-                                                    <div class="provider-info">
-                                                        <div class="provider-name-row">
-                                                            <h4>{provider.name.clone()}</h4>
-                                                            {provider.type_label.clone().map(|label| view! {
-                                                                <span class="provider-tag">{label}</span>
-                                                            })}
-                                                            {if provider.is_default_provider {
-                                                                view! { <span class="provider-tag default-tag">"默认"</span> }.into_any()
-                                                            } else {
-                                                                view! { <span></span> }.into_any()
-                                                            }}
-                                                        </div>
-                                                        <div class="provider-status">
-                                                            {if provider.enabled {
-                                                                view! { <span class="status-dot online"></span> }.into_any()
-                                                            } else {
-                                                                view! { <span class="status-dot offline"></span> }.into_any()
-                                                            }}
-                                                            {if provider.enabled { "可用" } else { "不可用" }}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div class="provider-card-body">
-                                                    <div class="provider-detail">
-                                                        <span class="detail-label">"类型"</span>
-                                                        <span class="detail-value">
-                                                            {if provider.provider_id == "ollama" {
-                                                                "嵌入式 (进程内)"
-                                                            } else {
-                                                                "远程 API"
-                                                            }}
-                                                        </span>
-                                                    </div>
-                                                    <div class="provider-detail">
-                                                        <span class="detail-label">"Base URL"</span>
-                                                        <span class="detail-value url-value">
-                                                            {provider.base_url.clone().unwrap_or_else(|| "未配置".to_string())}
-                                                        </span>
-                                                    </div>
-                                                    <div class="provider-detail">
-                                                        <span class="detail-label">"API Key"</span>
-                                                        <span class="detail-value">
-                                                            {if has_api_key {
-                                                                view! { <span class="status-set">"已设置"</span> }.into_any()
-                                                            } else {
-                                                                view! { <span class="status-unset">"未设置"</span> }.into_any()
-                                                            }}
-                                                        </span>
-                                                    </div>
-                                                    <div class="provider-detail">
-                                                        <span class="detail-label">"模型"</span>
-                                                        <span class="detail-value">
-                                                            {if model_count == 0 {
-                                                                view! { <span class="status-unset">"暂无模型"</span> }.into_any()
-                                                            } else {
-                                                                view! {
-                                                                    <span>
-                                                                        {default_model.map(|m| {
-                                                                            m.display_name.clone().unwrap_or_else(|| m.name.clone())
-                                                                        }).unwrap_or_else(|| format!("{} 个模型", model_count))}
-                                                                    </span>
-                                                                }.into_any()
-                                                            }}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <div class="provider-card-footer">
-                                                    <button
-                                                        class="btn btn-sm btn-secondary"
-                                                        on:click=move |_| {
-                                                            selected_provider.set(Some(provider_for_model.clone()));
-                                                            show_model_modal.set(true);
-                                                        }
-                                                    >
-                                                        "模型"
-                                                    </button>
-                                                    <button
-                                                        class="btn btn-sm btn-secondary"
-                                                        on:click=move |_| {
-                                                            selected_provider.set(Some(provider_for_config.clone()));
-                                                            show_config_modal.set(true);
-                                                        }
-                                                    >
-                                                        "设置"
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        }
-                                    }).collect_view()}
+                                <div class="providers-content">
+                                    <div class="provider-group">
+                                        <div class="providers-grid">
+                                            {list.into_iter().map(|p| render_remote_card(p)).collect_view()}
+                                        </div>
+                                    </div>
                                 </div>
                             }.into_any()
                         }
@@ -401,6 +533,32 @@ pub fn LlmProvidersPage() -> impl IntoView {
                     on_close=move || show_add_modal.set(false)
                     on_created=move || refresh.get_value()()
                 />
+            </Show>
+
+            // Delete confirmation modal
+            <Show when=move || show_delete_confirm.get().is_some()>
+                {move || show_delete_confirm.get().map(|p| view! {
+                    <Modal title="确认删除" on_close=move || show_delete_confirm.set(None)>
+                        <div class="modal-body">
+                            <p>
+                                "确定要删除供应商 "
+                                <strong>{p.name.clone()}</strong>
+                                " 吗？此操作不可撤销，关联的模型也将被删除。"
+                            </p>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" on:click=move |_| show_delete_confirm.set(None)>
+                                "取消"
+                            </button>
+                            <button
+                                class="btn btn-danger"
+                                on:click=move |_| on_delete_provider(p.clone())
+                            >
+                                "删除"
+                            </button>
+                        </div>
+                    </Modal>
+                })}
             </Show>
         </div>
     }

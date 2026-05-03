@@ -1602,38 +1602,64 @@ fn create_router(app_state: Arc<AppState>, gateway_state: Arc<GatewayState>) -> 
             "/api/v1/llm/health",
             get(handlers::http::llm_metrics::get_llm_health),
         )
-        // LLM Provider Admin API
+        // LLM Provider Admin API (QwenPaw-style /models)
+        .route("/api/v1/models", get(handlers::http::llm_admin::list_providers))
+        .route("/api/v1/models", post(handlers::http::llm_admin::create_provider))
         .route(
-            "/api/v1/admin/llm/providers",
-            get(handlers::http::llm_admin::list_providers),
-        )
-        .route(
-            "/api/v1/admin/llm/providers",
-            post(handlers::http::llm_admin::create_provider),
-        )
-        .route(
-            "/api/v1/admin/llm/providers/:id",
+            "/api/v1/models/:id",
             put(handlers::http::llm_admin::update_provider),
         )
         .route(
-            "/api/v1/admin/llm/providers/:id",
+            "/api/v1/models/:id",
             delete(handlers::http::llm_admin::delete_provider),
         )
         .route(
-            "/api/v1/admin/llm/providers/:id/models",
+            "/api/v1/models/:id/config",
+            put(handlers::http::llm_admin::update_provider_config),
+        )
+        .route(
+            "/api/v1/models/:id/models",
             post(handlers::http::llm_admin::add_model),
         )
         .route(
-            "/api/v1/admin/llm/providers/:id/models/:model_id",
+            "/api/v1/models/:id/models/:model_id",
             delete(handlers::http::llm_admin::delete_model),
         )
         .route(
-            "/api/v1/admin/llm/providers/:id/default",
+            "/api/v1/models/:id/models/:model_id/config",
+            put(handlers::http::llm_admin::update_model_config),
+        )
+        .route(
+            "/api/v1/models/:id/models/:model_id/probe-multimodal",
+            post(handlers::http::llm_admin::probe_multimodal),
+        )
+        .route(
+            "/api/v1/models/:id/default",
             put(handlers::http::llm_admin::set_default_provider),
         )
         .route(
-            "/api/v1/admin/llm/providers/:id/models/:model_id/default",
+            "/api/v1/models/:id/models/:model_id/default",
             put(handlers::http::llm_admin::set_default_model),
+        )
+        .route(
+            "/api/v1/models/:id/test",
+            post(handlers::http::llm_admin::test_provider_connection),
+        )
+        .route(
+            "/api/v1/models/:id/discover",
+            post(handlers::http::llm_admin::discover_models),
+        )
+        .route(
+            "/api/v1/models/:id/models/:model_name/test",
+            post(handlers::http::llm_admin::test_model_connection),
+        )
+        .route(
+            "/api/v1/models/active",
+            get(handlers::http::llm_admin::get_active_llm),
+        )
+        .route(
+            "/api/v1/models/active",
+            put(handlers::http::llm_admin::set_active_llm),
         )
         // Skills API
         .route("/api/v1/skills", get(handlers::http::skills::list_skills))

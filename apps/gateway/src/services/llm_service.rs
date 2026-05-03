@@ -12,8 +12,8 @@ use std::time::Duration;
 use beebotos_agents::communication::Message as ChannelMessage;
 use beebotos_agents::llm::{
     AnthropicConfig, AnthropicProvider, Content, FailoverProvider, FailoverProviderBuilder,
-    LLMProvider, Message as LLMMessage, OpenAIConfig, OpenAIProvider, RequestConfig, RetryPolicy,
-    Role,
+    LLMProvider, Message as LLMMessage, ModelInfo, OpenAIConfig, OpenAIProvider, RequestConfig,
+    RetryPolicy, Role,
 };
 use beebotos_agents::media::multimodal::{MultimodalContent, MultimodalProcessor};
 use sqlx::SqlitePool;
@@ -703,6 +703,295 @@ impl LlmService {
         failover.get_provider_status().await
     }
 
+    /// 测试单个供应商的连接
+    ///
+    /// 读取供应商配置，构造临时客户端，发送最小化测试请求。
+    pub async fn test_provider_connection(
+        &self,
+        provider_id: i64,
+    ) -> Result<(bool, String), GatewayError> {
+        let (provider, models) = db::get_provider_with_models(&self.db, provider_id)
+            .await
+            .map_err(|e| GatewayError::internal(format!("数据库错误: {}", e)))?
+            .ok_or_else(|| GatewayError::bad_request("供应商不存在"))?;
+
+        // 获取 API 密钥
+        let api_key = match &provider.api_key_encrypted {
+            Some(encrypted) => match self.encryption.decrypt(encrypted) {
+                Ok(key) => key,
+                Err(e) => {
+                    return Ok((
+                        false,
+                        format!("API 密钥解密失败: {}", e),
+                    ));
+                }
+            },
+            None => {
+                if provider.provider_id != "ollama" {
+                    return Ok((false, "未配置 API 密钥".to_string()));
+                }
+                String::new()
+            }
+        };
+
+        let base_url = provider
+            .base_url
+            .clone()
+            .unwrap_or_else(|| match provider.protocol.as_str() {
+                "anthropic" => "https://api.anthropic.com/v1".to_string(),
+                _ => "https://api.openai.com/v1".to_string(),
+            });
+
+        let default_model = models
+            .iter()
+            .find(|m| m.is_default_model)
+            .map(|m| m.name.clone())
+            .or_else(|| models.first().map(|m| m.name.clone()))
+            .unwrap_or_else(|| match provider.protocol.as_str() {
+                "anthropic" => "claude-3-sonnet-20240229".to_string(),
+                _ => "gpt-4o-mini".to_string(),
+            });
+
+        let provider_instance = match Self::create_provider_from_db(
+            &provider.protocol,
+            base_url,
+            api_key,
+            default_model.clone(),
+        ) {
+            Ok(p) => p,
+            Err(e) => return Ok((false, format!("创建供应商客户端失败: {}", e))),
+        };
+
+        // 构造最小化测试请求
+        let request = beebotos_agents::llm::types::LLMRequest {
+            messages: vec![LLMMessage::user("ping")],
+            config: RequestConfig {
+                model: default_model,
+                max_tokens: Some(1),
+                stream: Some(false),
+                ..Default::default()
+            },
+        };
+
+        // 使用超时执行测试请求
+        let result = tokio::time::timeout(Duration::from_secs(10), provider_instance.complete(request)).await;
+
+        match result {
+            Ok(Ok(_)) => Ok((true, "连接成功".to_string())),
+            Ok(Err(e)) => {
+                let msg = format!("请求失败: {}", e);
+                // 判断是否为认证错误
+                let lower = msg.to_lowercase();
+                if lower.contains("unauthorized")
+                    || lower.contains("invalid api key")
+                    || lower.contains("authentication")
+                    || lower.contains("401")
+                {
+                    Ok((false, "API 密钥无效或已过期".to_string()))
+                } else if lower.contains("timeout") || lower.contains("timed out") {
+                    Ok((false, "连接超时，请检查 Base URL 是否正确".to_string()))
+                } else if lower.contains("connection")
+                    || lower.contains("resolve")
+                    || lower.contains("dns")
+                {
+                    Ok((false, "无法连接到服务器，请检查 Base URL".to_string()))
+                } else {
+                    Ok((false, msg))
+                }
+            }
+            Err(_) => Ok((false, "连接超时（10 秒），请检查网络或 Base URL".to_string())),
+        }
+    }
+
+    /// 发现供应商可用模型
+    ///
+    /// 调用供应商的 list_models API，将未在数据库中的模型自动添加。
+    pub async fn discover_models(
+        &self,
+        provider_id: i64,
+    ) -> Result<(Vec<ModelInfo>, usize), GatewayError> {
+        let (provider, existing_models) = db::get_provider_with_models(&self.db, provider_id)
+            .await
+            .map_err(|e| GatewayError::internal(format!("数据库错误: {}", e)))?
+            .ok_or_else(|| GatewayError::bad_request("供应商不存在"))?;
+
+        let api_key = match &provider.api_key_encrypted {
+            Some(encrypted) => match self.encryption.decrypt(encrypted) {
+                Ok(key) => key,
+                Err(e) => {
+                    return Err(GatewayError::bad_request(format!(
+                        "API 密钥解密失败: {}",
+                        e
+                    )));
+                }
+            },
+            None => {
+                if provider.provider_id != "ollama" {
+                    return Err(GatewayError::bad_request("未配置 API 密钥"));
+                }
+                String::new()
+            }
+        };
+
+        let base_url = provider
+            .base_url
+            .clone()
+            .unwrap_or_else(|| match provider.protocol.as_str() {
+                "anthropic" => "https://api.anthropic.com/v1".to_string(),
+                _ => "https://api.openai.com/v1".to_string(),
+            });
+
+        let default_model = existing_models
+            .iter()
+            .find(|m| m.is_default_model)
+            .map(|m| m.name.clone())
+            .or_else(|| existing_models.first().map(|m| m.name.clone()))
+            .unwrap_or_else(|| match provider.protocol.as_str() {
+                "anthropic" => "claude-3-sonnet-20240229".to_string(),
+                _ => "gpt-4o-mini".to_string(),
+            });
+
+        let provider_instance = match Self::create_provider_from_db(
+            &provider.protocol,
+            base_url,
+            api_key,
+            default_model,
+        ) {
+            Ok(p) => p,
+            Err(e) => {
+                return Err(GatewayError::internal(format!(
+                    "创建供应商客户端失败: {}",
+                    e
+                )));
+            }
+        };
+
+        // 调用 list_models，带超时
+        let list_result = tokio::time::timeout(
+            Duration::from_secs(15),
+            provider_instance.list_models(),
+        )
+        .await;
+
+        let discovered = match list_result {
+            Ok(Ok(models)) => models,
+            Ok(Err(e)) => {
+                return Err(GatewayError::internal(format!("获取模型列表失败: {}", e)));
+            }
+            Err(_) => {
+                return Err(GatewayError::internal(
+                    "获取模型列表超时（15 秒）".to_string(),
+                ));
+            }
+        };
+
+        // 将未存在的模型添加到数据库
+        let existing_names: std::collections::HashSet<String> = existing_models
+            .into_iter()
+            .map(|m| m.name)
+            .collect();
+
+        let mut added = 0usize;
+        for model in &discovered {
+            if !existing_names.contains(&model.id) {
+                if let Ok(_) = db::add_model(
+                    &self.db,
+                    provider_id,
+                    &model.id,
+                    Some(&model.name),
+                )
+                .await
+                {
+                    added += 1;
+                }
+            }
+        }
+
+        Ok((discovered, added))
+    }
+
+    /// 测试特定模型的连接
+    ///
+    /// 使用指定模型名称发送测试请求。
+    pub async fn test_model_connection(
+        &self,
+        provider_id: i64,
+        model_name: &str,
+    ) -> Result<(bool, String), GatewayError> {
+        let (provider, _) = db::get_provider_with_models(&self.db, provider_id)
+            .await
+            .map_err(|e| GatewayError::internal(format!("数据库错误: {}", e)))?
+            .ok_or_else(|| GatewayError::bad_request("供应商不存在"))?;
+
+        let api_key = match &provider.api_key_encrypted {
+            Some(encrypted) => match self.encryption.decrypt(encrypted) {
+                Ok(key) => key,
+                Err(e) => return Ok((false, format!("API 密钥解密失败: {}", e))),
+            },
+            None => {
+                if provider.provider_id != "ollama" {
+                    return Ok((false, "未配置 API 密钥".to_string()));
+                }
+                String::new()
+            }
+        };
+
+        let base_url = provider
+            .base_url
+            .clone()
+            .unwrap_or_else(|| match provider.protocol.as_str() {
+                "anthropic" => "https://api.anthropic.com/v1".to_string(),
+                _ => "https://api.openai.com/v1".to_string(),
+            });
+
+        let provider_instance = match Self::create_provider_from_db(
+            &provider.protocol,
+            base_url,
+            api_key,
+            model_name.to_string(),
+        ) {
+            Ok(p) => p,
+            Err(e) => return Ok((false, format!("创建供应商客户端失败: {}", e))),
+        };
+
+        let request = beebotos_agents::llm::types::LLMRequest {
+            messages: vec![LLMMessage::user("ping")],
+            config: RequestConfig {
+                model: model_name.to_string(),
+                max_tokens: Some(1),
+                stream: Some(false),
+                ..Default::default()
+            },
+        };
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(10),
+            provider_instance.complete(request),
+        )
+        .await;
+
+        match result {
+            Ok(Ok(_)) => Ok((true, "连接成功".to_string())),
+            Ok(Err(e)) => {
+                let msg = format!("请求失败: {}", e);
+                let lower = msg.to_lowercase();
+                if lower.contains("unauthorized")
+                    || lower.contains("invalid api key")
+                    || lower.contains("401")
+                {
+                    Ok((false, "API 密钥无效".to_string()))
+                } else if lower.contains("not found") || lower.contains("404") || lower.contains("model") {
+                    Ok((false, "模型不存在或不可用".to_string()))
+                } else if lower.contains("timeout") {
+                    Ok((false, "连接超时".to_string()))
+                } else {
+                    Ok((false, msg))
+                }
+            }
+            Err(_) => Ok((false, "连接超时（10 秒）".to_string())),
+        }
+    }
+
     /// Get default model from database
     ///
     /// 🟢 P1 FIX: Fallback to the provider's first available model instead of
@@ -737,6 +1026,124 @@ impl LlmService {
                 }
             }
             None => "gpt-4o-mini".to_string(),
+        }
+    }
+
+    /// 探测模型的多模态能力
+    ///
+    /// 发送一个包含图片 URL 的测试请求，观察模型是否支持多模态输入。
+    /// 返回 (supports_image, supports_video, message)。
+    pub async fn probe_model_multimodal(
+        &self,
+        provider_id: i64,
+        model_name: &str,
+    ) -> Result<(bool, bool, String), GatewayError> {
+        let (provider, _) = db::get_provider_with_models(&self.db, provider_id)
+            .await
+            .map_err(|e| GatewayError::internal(format!("数据库错误: {}", e)))?
+            .ok_or_else(|| GatewayError::bad_request("供应商不存在"))?;
+
+        let api_key = match &provider.api_key_encrypted {
+            Some(encrypted) => match self.encryption.decrypt(encrypted) {
+                Ok(key) => key,
+                Err(e) => return Ok((false, false, format!("API 密钥解密失败: {}", e))),
+            },
+            None => {
+                if provider.provider_id != "ollama" {
+                    return Ok((false, false, "未配置 API 密钥".to_string()));
+                }
+                String::new()
+            }
+        };
+
+        let base_url = provider
+            .base_url
+            .clone()
+            .unwrap_or_else(|| match provider.protocol.as_str() {
+                "anthropic" => "https://api.anthropic.com/v1".to_string(),
+                _ => "https://api.openai.com/v1".to_string(),
+            });
+
+        let provider_instance = match Self::create_provider_from_db(
+            &provider.protocol,
+            base_url,
+            api_key,
+            model_name.to_string(),
+        ) {
+            Ok(p) => p,
+            Err(e) => return Ok((false, false, format!("创建供应商客户端失败: {}", e))),
+        };
+
+        // 构造一个包含图片的多模态测试请求
+        let test_image_url = "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/300px-PNG_transparency_demonstration_1.png";
+        let request = beebotos_agents::llm::types::LLMRequest {
+            messages: vec![LLMMessage::multimodal(
+                Role::User,
+                vec![
+                    Content::Text {
+                        text: "Describe this image briefly.".to_string(),
+                    },
+                    Content::ImageUrl {
+                        image_url: beebotos_agents::llm::types::ImageUrlContent {
+                            url: test_image_url.to_string(),
+                            detail: Some("auto".to_string()),
+                        },
+                    },
+                ],
+            )],
+            config: RequestConfig {
+                model: model_name.to_string(),
+                max_tokens: Some(50),
+                stream: Some(false),
+                ..Default::default()
+            },
+        };
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(15),
+            provider_instance.complete(request),
+        )
+        .await;
+
+        match result {
+            Ok(Ok(_)) => Ok((
+                true,
+                false,
+                "模型支持图片输入".to_string(),
+            )),
+            Ok(Err(e)) => {
+                let msg = format!("{}", e);
+                let lower = msg.to_lowercase();
+                // 如果错误信息暗示不支持图片，则认为不支持图片
+                if lower.contains("image")
+                    || lower.contains("multimodal")
+                    || lower.contains("vision")
+                    || lower.contains("content type")
+                    || lower.contains("unsupported")
+                {
+                    Ok((
+                        false,
+                        false,
+                        "模型不支持图片输入".to_string(),
+                    ))
+                } else if lower.contains("unauthorized") || lower.contains("401") {
+                    Ok((false, false, "API 密钥无效".to_string()))
+                } else if lower.contains("timeout") {
+                    Ok((false, false, "连接超时".to_string()))
+                } else {
+                    // 其他错误，保守认为不支持
+                    Ok((
+                        false,
+                        false,
+                        format!("探测失败，模型可能不支持图片输入: {}", msg),
+                    ))
+                }
+            }
+            Err(_) => Ok((
+                false,
+                false,
+                "连接超时（15 秒），无法完成探测".to_string(),
+            )),
         }
     }
 }

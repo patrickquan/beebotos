@@ -491,13 +491,13 @@ fn StepLlmModels(state: RwSignal<WizardState>) -> impl IntoView {
             return;
         }
         let presets: std::collections::HashMap<&str, (&str, &str)> = [
-            ("kimi", ("moonshot-v1-8k", "https://api.moonshot.cn")),
+            ("kimi-cn", ("moonshot-v1-8k", "https://api.moonshot.cn")),
             ("openai", ("gpt-4", "https://api.openai.com/v1")),
             (
                 "anthropic",
                 ("claude-3-sonnet", "https://api.anthropic.com"),
             ),
-            ("zhipu", ("glm-4", "https://open.bigmodel.cn/api/paas/v4")),
+            ("zhipu-cn", ("glm-4", "https://open.bigmodel.cn/api/paas/v4")),
             ("deepseek", ("deepseek-chat", "https://api.deepseek.com")),
             ("ollama", ("llama2", "http://localhost:11434")),
         ]

@@ -18,26 +18,16 @@ This is a Cargo workspace with 11 core crates and 4 applications. The project us
 | Windows | `beebotos-dev.ps1` | `beebotos-run.ps1` |
 | Linux/macOS | `beebotos-dev.sh` | `beebotos-run.sh` |
 
-**常用命令（Windows 示例）：**
-```powershell
-.\beebotos-dev.ps1 run gateway      # 编译并启动 gateway（最常用）
-.\beebotos-dev.ps1 build gateway    # 仅编译 gateway
-.\beebotos-dev.ps1 build web        # 编译 web 前端（含 wasm-pack）
-.\beebotos-dev.ps1 start gateway    # 仅启动 gateway
-.\beebotos-dev.ps1 stop gateway     # 停止 gateway
-.\beebotos-dev.ps1 restart gateway  # 重启 gateway
-.\beebotos-dev.ps1 status           # 查看所有服务状态
-.\beebotos-dev.ps1 menu             # 交互式菜单
-```
-
 **常用命令（Linux/macOS 示例）：**
 ```bash
-./beebotos-dev.sh run gateway
-./beebotos-dev.sh build web
-./beebotos-dev.sh start gateway
-./beebotos-dev.sh stop gateway
-./beebotos-dev.sh restart gateway
-./beebotos-dev.sh status
+./beebotos-dev.sh run gateway      # 编译并启动 gateway（最常用）
+./beebotos-dev.sh build gateway    # 仅编译 gateway
+./beebotos-dev.sh build web        # 编译 web 前端（含 wasm-pack）
+./beebotos-dev.sh start gateway    # 仅启动 gateway
+./beebotos-dev.sh stop gateway     # 停止 gateway
+./beebotos-dev.sh restart gateway  # 重启 gateway
+./beebotos-dev.sh status           # 查看所有服务状态
+./beebotos-dev.sh menu             # 交互式菜单
 ```
 
 支持的服务：`gateway`（8000）、`web`（8090）、`beehub`（8080）、`cli`（仅安装）
@@ -87,7 +77,7 @@ cd contracts && forge fmt                          # 格式化合约
 
 ### Applications (in `apps/`)
 - `gateway` - API gateway service (Axum, port 8000)
-- `web` - Web management UI (port 8090)
+- `web` - Web management UI (Leptos CSR + wasm-pack, port 8090)
 - `cli` - Command-line tool (`beebot` binary)
 - `beehub` - Hub service
 
@@ -206,16 +196,29 @@ See `.env.example` for the full set of expected variables.
 - State manager for agent lifecycle tracking
 - WASM execution must go through `kernel::wasm` interfaces; do not add `wasmtime` directly to this crate
 
+### Web Frontend (`apps/web`)
+- Uses **Leptos** (CSR mode) with `wasm-bindgen`, not React/Vue
+- Build produces WASM via `wasm-pack` targeting `wasm32-unknown-unknown`
+- Has a server binary `web-server` (Axum-based) that serves the static assets
+- The dev script `beebotos-dev.sh build web` handles the full build: compile WASM library + wasm-pack + build server binary
+
 ### Message Bus
 Unified message bus (`beebotos-message-bus`) used across crates for inter-module communication. Each crate has its own message bus wrapper (e.g., `KernelMessageBus`, `AgentsMessageBus`).
+
+### Feature Flags
+Common workspace feature flags:
+- `wasm-runtime` — Enable WASM runtime
+- `a2a-server` — Enable A2A protocol server
+- `sqlite` — Enable SQLite database backend
+- `metrics` — Enable telemetry metrics collection
 
 ### Toolchain
 Nightly Rust is required (see `rust-toolchain.toml`). Components: `rustfmt`, `clippy`. Targets include `wasm32-unknown-unknown` and Windows targets (`x86_64-pc-windows-gnu`, `x86_64-pc-windows-msvc`).
 
 ## Related Documentation
 
-- `AGENTS.md` — extended guide for AI coding assistants (deeper coding-style, NatSpec, deployment, security details). Read this if `CLAUDE.md` lacks the context you need.
-- `readme.md` — project overview, 5-layer architecture diagram, quick start
-- `CONTRIBUTING.md` — contribution workflow
+- `AGENTS.md` — Extended guide for AI coding assistants (deeper coding-style, NatSpec, deployment, security details). Read this if `CLAUDE.md` lacks the context you need.
+- `readme.md` — Project overview, 5-layer architecture diagram, quick start
+- `CONTRIBUTING.md` — Contribution workflow
 - `contracts/STRUCTURE.md` — Solidity contract layout
-- `tasks/todo.md` — current in-progress task list (the project follows the "plan → todo.md → verify" workflow)
+- `tasks/todo.md` — Current in-progress task list (the project follows the "plan → todo.md → verify" workflow)

@@ -448,9 +448,9 @@ fn CreateAgentModal(
                         >
                             <option value="openai">"OpenAI"</option>
                             <option value="anthropic">"Anthropic"</option>
-                            <option value="kimi">"Kimi"</option>
+                            <option value="kimi-cn">"Kimi"</option>
                             <option value="deepseek">"DeepSeek"</option>
-                            <option value="zhipu">"Zhipu"</option>
+                            <option value="zhipu-cn">"Zhipu"</option>
                             <option value="ollama">"Ollama"</option>
                         </select>
                     </div>

@@ -441,6 +441,15 @@ body {
     box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
 }
 
+.btn-primary:disabled {
+    background: var(--bg-glass);
+    color: var(--text-muted);
+    border: 1px solid var(--border-color);
+    box-shadow: none;
+    transform: none;
+    cursor: not-allowed;
+}
+
 .btn-secondary {
     background: var(--bg-glass-light);
     color: var(--text-primary);
