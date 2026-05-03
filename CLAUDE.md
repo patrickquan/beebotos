@@ -101,7 +101,7 @@ cd contracts && forge fmt                          # 格式化合约
   - `tests/fixtures/` - Shared test fixtures
   - Standalone integration tests also exist directly under `tests/` (e.g., `lark_message_test.rs`, `test_channel_registry.rs`, `test_config.rs`)
 - `config/` - Configuration files (TOML)
-- `skills/` - Skill definitions
+- `data/skills/` - Skill definitions
 - `docs/` - Documentation
 
 ## Architecture Rules
@@ -211,49 +211,6 @@ Unified message bus (`beebotos-message-bus`) used across crates for inter-module
 
 ### Toolchain
 Nightly Rust is required (see `rust-toolchain.toml`). Components: `rustfmt`, `clippy`. Targets include `wasm32-unknown-unknown` and Windows targets (`x86_64-pc-windows-gnu`, `x86_64-pc-windows-msvc`).
-
-## 前端开发注意事项
-
-### Bash/MSYS2 环境下编译 Web
-在 bash（如 Git Bash、MSYS2）中，由于 `beebotos-dev.ps1` 的 shebang 是 `#!/usr/bin/env pwsh`，而系统通常只有 `powershell`（无 `pwsh`），直接运行 `./beebotos-dev.ps1` 会报错。正确调用方式：
-```bash
-powershell -File beebotos-dev.ps1 build web
-```
-
-### WebSocket 事件类型必须前后端对齐
-后端发送的 WebSocket 事件 `state` 字段（如 `processing`）必须在前端 `ChatEventType` 枚举中有对应变体，否则 serde 反序列化失败，前端控制台报错且无法处理事件。
-
-### Release 模式下的 WASM 闭包生命周期
-前端 WebSocket 事件处理避免使用 `Closure::once` + `setTimeout(0)` + `forget()` 模式。在 release 编译优化后，该模式可能导致闭包在组件销毁后仍被执行，触发 Leptos reactive disposed panic。应改用 `wasm_bindgen_futures::spawn_local`：
-```rust
-// 不推荐
-let closure = Closure::once(move || { state.handle_chat_event(event); });
-window.set_timeout_with_callback_and_timeout_and_arguments_0(closure.as_ref().unchecked_ref(), 0).unwrap();
-closure.forget();
-
-// 推荐
-wasm_bindgen_futures::spawn_local(async move {
-    state.handle_chat_event(event);
-});
-```
-
-### 打包后环境与开发环境差异
-部分问题（如 reactive disposed panic）仅在 `wasm-pack build --release` 后的生产环境出现，开发环境（debug）可能正常。验证前端修复时，**必须**用 release 模式编译测试。
-
-### Leptos 组件中 WASM 闭包必须配套清理
-使用 `Closure::wrap` + `setInterval`/`setTimeout` + `forget()` 创建的 WASM 闭包，
-在组件重新渲染（非卸载）后，旧闭包仍可能持有 disposed 的 Signal。
-必须在组件卸载时通过 `on_cleanup` 清除定时器：
-```rust
-let interval_id = window.set_interval_with_callback_and_timeout_and_arguments_0(
-    closure.as_ref().unchecked_ref(),
-    50,
-).unwrap();
-on_cleanup(move || {
-    window.clear_interval_with_handle(interval_id);
-});
-closure.forget();
-```
 
 ## Related Documentation
 
