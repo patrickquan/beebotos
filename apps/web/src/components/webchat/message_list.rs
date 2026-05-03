@@ -364,10 +364,6 @@ pub fn MessageList(
                 .into(),
             );
             *count = msgs.len();
-            // 新消息到达时，移除"思考中"提示（非流式 Final 的情况）
-            if let Some(thinking) = doc.query_selector("#thinking-message").ok().flatten() {
-                thinking.remove();
-            }
             // 仅在用户未主动上滚时强制滚动到底部
             if !*user_scrolled_up.lock().unwrap() {
                 if let Some(el) = container.clone().dyn_into::<web_sys::HtmlElement>().ok() {
@@ -384,12 +380,7 @@ pub fn MessageList(
 
         let existing = doc.query_selector("#streaming-message").ok().flatten();
 
-        // 仅在流式内容实际到达时移除"思考中"提示（保留到有真实内容）
-        if streaming {
-            if let Some(thinking) = doc.query_selector("#thinking-message").ok().flatten() {
-                thinking.remove();
-            }
-        }
+        // 流式状态处理
 
         // 读取流式内容（使用 get_untracked 避免响应式追踪）
         let mut content = String::new();

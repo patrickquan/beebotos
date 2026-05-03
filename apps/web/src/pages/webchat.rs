@@ -4,6 +4,8 @@
 //! 已接入 WebChat Channel：通过 WebSocket 接收 Agent 回复，通过 HTTP POST
 //! 发送消息
 
+use std::cell::RefCell;
+
 use gloo_storage::{LocalStorage, Storage};
 use leptos::prelude::*;
 use leptos::view;
@@ -17,6 +19,11 @@ use crate::components::webchat::{
 use crate::gateway::websocket::{WebSocketClient, WsConnectionStatus};
 use crate::state::{use_auth_state, use_chat_ui_state, use_webchat_state, WebchatWsHandler};
 use crate::webchat::{ChatMessage, MessageRole};
+
+// 全局追踪当前活跃的 WebSocket 客户端（防止组件重渲染导致重复连接）
+thread_local! {
+    static ACTIVE_WS_CLIENT: RefCell<Option<WebSocketClient>> = RefCell::new(None);
+}
 
 /// 获取或创建持久化的会话 ID（仅作本地缓存，后端为准）
 fn get_stored_session_id() -> Option<String> {
@@ -153,7 +160,7 @@ pub fn WebchatPage() -> impl IntoView {
     let chat_state_for_ws = chat_state.clone();
     let auth_state_for_ws = auth_state.clone();
 
-    // 创建 WebSocket 客户端
+    // 创建 WebSocket 客户端（全局去重，防止组件重渲染导致重复连接）
     let ws_client = if let Some(window) = web_sys::window() {
         let location = window.location();
         let protocol = location.protocol().unwrap_or_else(|_| "http:".to_string());
@@ -170,6 +177,16 @@ pub fn WebchatPage() -> impl IntoView {
             format!("{}:{}", hostname, port)
         };
         let ws_url = format!("{}://{}/ws", ws_protocol, ws_host);
+
+        // 先断开已有的 WebSocket（防止组件重渲染时产生重复连接）
+        ACTIVE_WS_CLIENT.with(|cell| {
+            if let Some(ref old_ws) = *cell.borrow() {
+                old_ws.disconnect();
+                web_sys::console::log_1(
+                    &"[webchat] disconnected previous WebSocket to prevent duplicates".into(),
+                );
+            }
+        });
 
         let ws = WebSocketClient::new(&ws_url);
 
@@ -190,6 +207,11 @@ pub fn WebchatPage() -> impl IntoView {
                 &format!("[webchat] WebSocket connecting to {}", ws_url).into(),
             );
         }
+
+        // 存入全局追踪
+        ACTIVE_WS_CLIENT.with(|cell| {
+            *cell.borrow_mut() = Some(ws.clone());
+        });
 
         Some(ws)
     } else {
@@ -263,29 +285,6 @@ pub fn WebchatPage() -> impl IntoView {
         chat_state_for_send.add_message(user_message);
         chat_state_for_send.is_sending.set(true);
         chat_state_for_send.set_error(None);
-
-        // 立即在 DOM 中显示"思考中"提示（不经过 message_data，避免污染消息列表）
-        if let Some(container) = web_sys::window()
-            .and_then(|w| w.document())
-            .and_then(|d| d.query_selector("#messages-container").ok().flatten())
-        {
-            let thinking_html = r#"<div class="message assistant" id="thinking-message">
-                <div class="message-avatar">🤖</div>
-                <div class="message-content-wrapper">
-                    <div class="message-content">
-                        <div class="reading-indicator">
-                            <div class="reading-indicator__dots"><span></span><span></span><span></span></div>
-                            <span class="reading-indicator__label">正在思考，请稍候...</span>
-                        </div>
-                    </div>
-                </div>
-            </div>"#;
-            container.insert_adjacent_html("beforeend", thinking_html).unwrap();
-            // 滚动到底部
-            if let Some(el) = container.dyn_ref::<web_sys::HtmlElement>() {
-                el.set_scroll_top(el.scroll_height());
-            }
-        }
 
         // 异步发送到后端
         let chat_state_send = chat_state_for_send.clone();
