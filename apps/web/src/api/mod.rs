@@ -30,7 +30,8 @@ pub use gateway::{
 // Re-export 服务
 pub use services::{
     AgentInfo, AgentLogEntry, AgentService, AgentStatus, ApiService, AssetInfo, AuthService,
-    ChannelConfig, ChannelInfo, ChannelService, ChannelStatus, CreateAgentRequest,
+    ChannelConfig, ChannelInfo, ChannelQrcodeResponse, ChannelQrcodeStatusResponse,
+    ChannelService, ChannelStatus, ChannelTypesResponse, CreateAgentRequest,
     CreateInstanceRequest, CreateProposalRequest, DaoService, DaoSummary, ExecuteSkillResponse,
     InstallSkillRequest, InstallSkillResponse, InstanceInfo, LlmConfigService, LlmGlobalConfig,
     LlmHealthResponse, LlmLatency, LlmMetricsResponse, LlmProviderConfig, LlmProviderHealth,

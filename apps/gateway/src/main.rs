@@ -1741,7 +1741,28 @@ fn create_router(app_state: Arc<AppState>, gateway_state: Arc<GatewayState>) -> 
             "/api/v1/webchat/side-questions",
             post(handlers::http::webchat::create_side_question),
         )
-        // Channel routes
+        // QwenPaw-style Channel Config APIs
+        .route(
+            "/api/v1/config/channels/types",
+            get(handlers::http::channels::list_channel_types),
+        )
+        .route(
+            "/api/v1/config/channels",
+            get(handlers::http::channels::list_channels_config),
+        )
+        .route(
+            "/api/v1/config/channels/:name",
+            put(handlers::http::channels::update_channel_config),
+        )
+        .route(
+            "/api/v1/config/channels/:name/qrcode",
+            get(handlers::http::channels::get_channel_qrcode),
+        )
+        .route(
+            "/api/v1/config/channels/:name/qrcode/status",
+            get(handlers::http::channels::get_channel_qrcode_status),
+        )
+        // Legacy Channel routes
         .route(
             "/api/v1/channels",
             get(handlers::http::channels::list_channels),

@@ -1270,8 +1270,9 @@ impl MessageProcessor {
                             for marker in &["assistant:", "答：", "a:", "回答：", "助手："]
                             {
                                 if let Some(pos) = mem_lower.find(marker) {
-                                    let answer =
-                                        r.entry.content[pos + marker.len()..].trim().to_string();
+                                    let rest = &r.entry.content[pos + marker.len()..];
+                                    // 只取第一行，避免 title+content 拼接导致的重复
+                                    let answer = rest.lines().next().unwrap_or(rest).trim().to_string();
                                     if answer.chars().count() > 5 && answer.chars().count() < 500 {
                                         info!(
                                             "🧠 P2 MEMORY DIRECT HIT: 精确匹配，直接返回答案 ({} \

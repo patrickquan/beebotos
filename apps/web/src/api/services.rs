@@ -514,6 +514,65 @@ impl ChannelService {
             )
             .await
     }
+
+    // ===== QwenPaw-style Channel Config APIs =====
+
+    /// List all available channel types
+    pub async fn list_channel_types(&self) -> Result<ChannelTypesResponse, ApiError> {
+        self.client.get("/config/channels/types").await
+    }
+
+    /// List all channels with full config (returns Record<key, ChannelConfig>)
+    pub async fn list_channels_config(
+        &self,
+    ) -> Result<std::collections::HashMap<String, ChannelConfig>, ApiError> {
+        self.client.get("/config/channels").await
+    }
+
+    /// Update single channel config
+    pub async fn update_channel_config(
+        &self,
+        name: &str,
+        config: &ChannelConfig,
+    ) -> Result<serde_json::Value, ApiError> {
+        self.client
+            .put(
+                &format!(
+                    "/config/channels/{}",
+                    js_sys::encode_uri_component(name)
+                ),
+                config,
+            )
+            .await
+    }
+
+    /// Get QR code for channel auth (weixin/dingtalk/wecom)
+    pub async fn get_channel_qrcode(
+        &self,
+        channel: &str,
+    ) -> Result<ChannelQrcodeResponse, ApiError> {
+        self.client
+            .get(&format!(
+                "/config/channels/{}/qrcode",
+                js_sys::encode_uri_component(channel)
+            ))
+            .await
+    }
+
+    /// Check QR code scan status
+    pub async fn get_channel_qrcode_status(
+        &self,
+        channel: &str,
+        token: &str,
+    ) -> Result<ChannelQrcodeStatusResponse, ApiError> {
+        self.client
+            .get(&format!(
+                "/config/channels/{}/qrcode/status?token={}",
+                js_sys::encode_uri_component(channel),
+                js_sys::encode_uri_component(token)
+            ))
+            .await
+    }
 }
 
 impl ApiService for ChannelService {
@@ -942,17 +1001,131 @@ pub enum ChannelStatus {
     Disabled,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
 pub struct ChannelConfig {
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bot_prefix: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter_tool_messages: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter_thinking: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dm_policy: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_policy: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allow_from: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub require_mention: Option<bool>,
+    // 通用凭证字段
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub base_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bot_token: Option<String>,
-    pub bot_base_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_reconnect: Option<bool>,
-    pub reconnect_interval_secs: Option<u64>,
-    pub webhook_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub api_secret: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_secret: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_secret: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub webhook_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub region: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accept_bot_messages: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub at_sender_on_reply: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub share_session_in_group: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ack_message: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bot_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bot_base_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reconnect_interval_secs: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warning_before_secs: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub force_before_secs: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_dir: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_merge_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_merge_delay_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dm_allowlist_policy: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dm_allowlist: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_allowlist_policy: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_allowlist: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_sid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phone_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tts_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tts_voice: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stt_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub welcome_greeting: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sip_mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sip_server: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub livekit_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub livekit_api_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub extra: Option<serde_json::Value>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ChannelTypesResponse {
+    pub types: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ChannelQrcodeResponse {
+    pub qrcode: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub qrcode_img_content: Option<String>,
+    pub poll_token: String,
+    pub expires_in: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ChannelQrcodeStatusResponse {
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bot_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

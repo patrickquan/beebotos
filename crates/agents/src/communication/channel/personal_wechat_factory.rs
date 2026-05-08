@@ -48,6 +48,10 @@ impl PersonalWeChatFactory {
             "warning_before_secs": 7200,
             "force_before_secs": 1800,
             "max_reconnect_attempts": 10,
+            "bot_prefix": "/",
+            "message_merge_enabled": true,
+            "message_merge_delay_ms": 2000,
+            "media_dir": null,
         })
     }
 }
@@ -137,6 +141,69 @@ impl ChannelFactory for PersonalWeChatFactory {
             webhook_url: None,
         };
 
+        // Parse allowlist config
+        let dm_allowlist_policy = config
+            .get("dm_allowlist_policy")
+            .and_then(|v| v.as_str())
+            .and_then(|s| match s {
+                "allowlist" => Some(super::personal_wechat_channel::AllowlistPolicy::Allowlist),
+                _ => Some(super::personal_wechat_channel::AllowlistPolicy::Open),
+            })
+            .unwrap_or_default();
+
+        let dm_allowlist = config
+            .get("dm_allowlist")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let group_allowlist_policy = config
+            .get("group_allowlist_policy")
+            .and_then(|v| v.as_str())
+            .and_then(|s| match s {
+                "allowlist" => Some(super::personal_wechat_channel::AllowlistPolicy::Allowlist),
+                _ => Some(super::personal_wechat_channel::AllowlistPolicy::Open),
+            })
+            .unwrap_or_default();
+
+        let group_allowlist = config
+            .get("group_allowlist")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Bot 前缀
+        let bot_prefix = config
+            .get("bot_prefix")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // 消息合并开关
+        let message_merge_enabled = config
+            .get("message_merge_enabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
+        // 消息合并延迟（毫秒）
+        let message_merge_delay_ms = config
+            .get("message_merge_delay_ms")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(2000);
+
+        // 媒体文件下载目录
+        let media_dir = config
+            .get("media_dir")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
         // Build config
         let channel_config = PersonalWeChatConfig {
             base_url,
@@ -146,6 +213,14 @@ impl ChannelFactory for PersonalWeChatFactory {
             reconnect_interval_secs,
             warning_before_secs,
             force_before_secs,
+            dm_allowlist_policy,
+            dm_allowlist,
+            group_allowlist_policy,
+            group_allowlist,
+            bot_prefix,
+            message_merge_enabled,
+            message_merge_delay_ms,
+            media_dir,
             base: base_config,
         };
 
@@ -185,6 +260,14 @@ impl ChannelFactory for PersonalWeChatFactory {
                     );
                     return false;
                 }
+            }
+        }
+
+        // Validate message_merge_delay_ms is reasonable
+        if let Some(delay) = config.get("message_merge_delay_ms").and_then(|v| v.as_u64()) {
+            if delay > 30000 {
+                warn!("Personal WeChat config validation failed: message_merge_delay_ms exceeds 30s");
+                return false;
             }
         }
 

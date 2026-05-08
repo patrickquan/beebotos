@@ -122,6 +122,11 @@ pub trait Channel: Send + Sync + 'static {
     fn as_any(&self) -> &dyn std::any::Any {
         panic!("as_any not implemented for this channel")
     }
+
+    /// 转换为可变 Any 引用，用于 downcast 到具体类型
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        panic!("as_any_mut not implemented for this channel")
+    }
 }
 
 /// 连接模式
