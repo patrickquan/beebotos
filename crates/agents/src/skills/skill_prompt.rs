@@ -52,29 +52,6 @@ pub async fn build_skills_prompt(registry: &Arc<SkillRegistry>) -> String {
         );
     }
 
-
-            return Err(AgentError::invalid_input(format!("Invalid URL: {}", url)));
-        }
-
-        // Fetch content
-        let response = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| AgentError::platform(format!("Failed to fetch URL: {}", e)))?;
-
-        if !response.status().is_success() {
-            return Err(AgentError::platform(format!(
-                "HTTP error: {} - {}",
-                response.status(),
-                url
-            )));
-        }
-
-        // Clone content-type before consuming response
-        let content_type: String = response
-            .headers()
     // 按使用频率排序，高优先级 skill 在前
     let mut skills = skills;
     skills.sort_by(|a, b| b.usage_count.cmp(&a.usage_count));
@@ -105,46 +82,9 @@ fn build_xml(skills: &[crate::skills::registry::RegisteredSkill], with_desc: boo
         String::from(
             "Use the read tool to load a skill's file when the task matches its description.",
         ),
-		
-		        let installed_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
-        // Remove existing entry with same ID
-        self.entries.retain(|e| e.id != id);
-
-        self.entries.push(LockEntry {
-            id,
-            version,
-            installed_at,
-            origin,
-            source_id,
         String::from(
             "When a skill file references a relative path, resolve it against the skill directory",
-        ),        }
-    }
-
-    pub fn parse(version: &str) -> Result<Self, VersionError> {
-        let parts: Vec<&str> = version.split('.').collect();
-        if parts.is_empty() {
-            return Err(VersionError::InvalidFormat(version.to_string()));
-        }
-            sqlx::query_as("SELECT AVG(rating), COUNT(*) FROM skill_ratings WHERE skill_id = ?1")
-                .bind(skill_id)
-                .fetch_one(&self.db)
-                .await?;
-
-        Ok(RatingSummary {
-            average_rating: row.0.unwrap_or(0.0),
-            total_ratings: row.1 as u32,
-        })
-    }
-
-    /// List ratings for a skill with pagination
-    pub async fn list_ratings(
-        &self,
-        skill_id: &str,
+        ),
         String::from(
             "(parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
         ),
@@ -164,30 +104,6 @@ fn build_xml(skills: &[crate::skills::registry::RegisteredSkill], with_desc: boo
             .skill_md_path
             .to_string_lossy()
             .replace('\\', "/");
-			
-			                debug!("Command not found: {}", cmd_name);
-                return CommandResult::NotFound;
-            }
-        };
-        drop(commands); // Release lock before async execution
-
-        // Check permission
-        if !command.has_permission(&ctx).await {
-            return CommandResult::Error("Permission denied".to_string());
-        }
-
-        // Convert args to string slices
-        let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-
-        // Execute command
-        match command.execute(&arg_refs, &ctx).await {
-            Ok(response) => CommandResult::Success(response),
-            Err(e) => {
-                error!("Command execution failed: {}", e);
-                CommandResult::Error(format!("Execution failed: {}", e))
-            }
-        }
-    }
         lines.push(String::from("  <skill>"));
         lines.push(format!(
             "    <name>{}</name>",

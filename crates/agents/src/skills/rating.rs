@@ -82,57 +82,6 @@ impl SkillRatingStore {
     /// List ratings for a skill with pagination
     pub async fn list_ratings(
         &self,
-		
-		             <available_skills>\n\
-             </available_skills>\n\
-             \n\
-             No skills are currently installed. If asked about available skills, report that none are installed."
-        );
-    }
-
-    // 按使用频率排序，高优先级 skill 在前
-    let mut skills = skills;
-    skills.sort_by(|a, b| b.usage_count.cmp(&a.usage_count));
-    let skills = &skills[..skills.len().min(MAX_SKILLS_IN_PROMPT)];
-
-    // 尝试 full 模式
-    let full = build_xml(skills, true);
-    if full.chars().count() <= MAX_SKILL_PROMPT_CHARS {
-        return full;
-    }
-
-    // fallback 1: compact 模式（去掉 description）
-    let compact = build_xml(skills, false);
-    if compact.chars().count() <= MAX_SKILL_PROMPT_CHARS {
-        return compact;
-    }
-
-    // fallback 2: 截断到预算
-    truncate_to_budget(compact, MAX_SKILL_PROMPT_CHARS)
-}
-
-fn build_xml(skills: &[crate::skills::registry::RegisteredSkill], with_desc: bool) -> String {
-    let mut lines: Vec<String> = vec![
-        String::new(),
-        String::from(
-            "The following skills provide specialized instructions for specific tasks.",
-        ),
-        String::from(
-            "Use the read tool to load a skill's file when the task matches its description.",
-        ),
-        String::from(
-            "When a skill file references a relative path, resolve it against the skill directory",
-        ),
-        String::from(
-            "(parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
-        ),
-        String::from(
-            "When executing skill scripts with the exec tool, ALWAYS set the cwd parameter to the skill directory",
-        ),
-        String::from(
-            "so that relative paths in commands work correctly.",
-        ),
-        String::new(),
         skill_id: &str,
         limit: i64,
         offset: i64,

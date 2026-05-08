@@ -123,35 +123,6 @@ pub struct SkillManifest {
     pub license: String,
     pub user_invocable: bool,
     pub disable_model_invocation: bool,
-	
-	            .await
-            .map_err(|e| format!("Failed to write lockfile: {}", e))
-    }
-
-    /// Add or update an entry.
-    pub fn upsert(&mut self, id: String, version: String, origin: String, source_id: String) {
-        let installed_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
-        // Remove existing entry with same ID
-        self.entries.retain(|e| e.id != id);
-
-        self.entries.push(LockEntry {
-            id,
-            version,
-            installed_at,
-            origin,
-            source_id,
-        });
-    }
-
-    /// Remove an entry by ID.
-    pub fn remove(&mut self, id: &str) -> bool {
-        let len_before = self.entries.len();
-        self.entries.retain(|e| e.id != id);
-        self.entries.len() < len_before
     pub command_dispatch: Option<String>,
     pub command_tool: Option<String>,
     pub slash_commands: Vec<String>,

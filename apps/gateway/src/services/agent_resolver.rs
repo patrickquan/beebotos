@@ -172,23 +172,6 @@ impl AgentResolver {
                         "Failed to query AgentChannelService for {}:{}: {}",
                         platform_str, channel_id, e
                     );
-					
-					
-    fn try_from(row: ChatMessageRow) -> Result<Self, Self::Error> {
-        Ok(Self {
-            id: row.id,
-            session_id: row.session_id,
-            role: row.role,
-            content: row.content,
-            metadata: serde_json::from_str(&row.metadata)
-                .map_err(|e| format!("Invalid metadata JSON: {}", e))?,
-            token_usage: row
-                .token_usage
-                .map(|s| serde_json::from_str(&s))
-                .transpose()
-                .map_err(|e| format!("Invalid token_usage JSON: {}", e))?,
-            created_at: row
-                .created_at
                 }
             }
         }

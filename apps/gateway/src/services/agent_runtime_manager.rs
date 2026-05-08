@@ -183,29 +183,6 @@ impl AgentInstance {
                 )
                 .await
                 {
-					    /// Replaces: AgentService::create_and_spawn + AgentRuntimeManager::register_agent
-    pub async fn create_and_spawn_agent(
-        &self,
-        config: AgentConfig,
-        owner_id: &str,
-    ) -> Result<(AgentHandle, crate::models::AgentRecord), crate::error::AppError> {
-        info!("Creating and spawning agent '{}' for owner {}", config.name, owner_id);
-
-        // Create database record
-        let agent_record = self.create_agent_in_db(&config, owner_id).await?;
-
-        // Spawn via new runtime
-        let handle = self.runtime.spawn(config).await
-            .map_err(|e| crate::error::AppError::Agent(e.to_string()))?;
-
-        info!("Agent {} created and spawned successfully", handle.agent_id);
-
-        Ok((handle, agent_record))
-    }
-
-    /// 🔧 FIX: Start (restart) an agent
-    /// 
-    /// Replaces: AgentService::start_agent
                     Ok(wallet) => {
                         agent = agent.with_wallet(Arc::new(wallet));
                         info!("Agent wallet attached for agent {}", agent_id);

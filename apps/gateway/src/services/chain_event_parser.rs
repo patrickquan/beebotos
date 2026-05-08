@@ -243,38 +243,19 @@ impl ChainEventParser {
             })
         }
     }
-            .ok_or_else(|| AppError::Configuration("Wallet not initialized for signing".into()))?;
 
-        let identity_contract = self.config.identity_contract.as_ref().ok_or_else(|| {
-            AppError::Configuration("Identity contract address not configured".into())
-        })?;
-
-        info!(
-            agent_id = %agent_id,
-            did = %did,
-            contract = %hex::encode(identity_contract),
-            "Registering agent on-chain identity"
-        );
-
-        // Build transaction data
-        let tx_data = build_register_identity_call(did, public_key);
-
-        // Use TransactionHelper for complete transaction lifecycle
-        use super::chain_transaction::{TransactionHelper, TransactionOptions};
-        let tx_hash = TransactionHelper::send_contract_transaction(
-            client,
-            wallet,
-            identity_contract.clone(),
-            tx_data,
-            U256::from(0),
-            self.config.chain_id,
-            TransactionOptions {
-                gas_buffer: 50000,
-                ..Default::default()
-            },
-        )
-        .await?;
-
+    /// Parse events from a transaction receipt
+    pub fn parse_receipt(
+        &self,
+        receipt: &beebotos_chain::compat::TransactionReceipt,
+        tx_hash: &str,
+    ) -> Vec<ParsedEvent> {
+        receipt
+            .logs
+            .iter()
+            .filter_map(|log| self.parse_log(log, receipt.block_number, tx_hash))
+            .collect()
+    }
 
     /// Parse identity contract events
     fn parse_identity_event(
