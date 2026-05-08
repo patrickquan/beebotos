@@ -127,7 +127,32 @@ impl WebchatService {
         title: &str,
     ) -> Result<ChatSession, AppError> {
         let now = chrono::Utc::now().to_rfc3339();
+        info!("Agent {} stopped", agent_id);
+        Ok(())
+    }
 
+    /// 🔧 FIX: Execute task on agent
+    /// 
+    /// Replaces: AgentService::execute_task
+    pub async fn execute_task(
+        &self,
+        agent_id: &str,
+        task: TaskConfig,
+    ) -> Result<TaskResult, crate::error::AppError> {
+        self.runtime.execute_task(agent_id, task).await
+            .map_err(|e| crate::error::AppError::Agent(e.to_string()))
+    }
+
+    /// 🔧 FIX: Get agent status
+    /// 
+    /// Replaces: AgentService::get_agent_status + AgentRuntimeManager::get_agent_status
+    pub async fn get_agent_status(&self, agent_id: &str) -> Result<AgentStatus, crate::error::AppError> {
+        self.runtime.status(agent_id).await
+            .map_err(|e| crate::error::AppError::Agent(e.to_string()))
+    }
+
+    /// 🔧 FIX: List all agents
+    /// 
         sqlx::query(
             r#"
             INSERT INTO chat_sessions (user_id, channel, title, created_at, updated_at)

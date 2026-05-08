@@ -55,7 +55,39 @@ impl Version {
         if parts.is_empty() {
             return Err(VersionError::InvalidFormat(version.to_string()));
         }
+            sqlx::query_as("SELECT AVG(rating), COUNT(*) FROM skill_ratings WHERE skill_id = ?1")
+                .bind(skill_id)
+                .fetch_one(&self.db)
+                .await?;
 
+        Ok(RatingSummary {
+            average_rating: row.0.unwrap_or(0.0),
+            total_ratings: row.1 as u32,
+        })
+    }
+
+    /// List ratings for a skill with pagination
+    pub async fn list_ratings(
+        &self,
+        skill_id: &str,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<SkillRating>, sqlx::Error> {
+        sqlx::query_as(
+            r#"
+            SELECT id, skill_id, user_id, rating, review, created_at
+            FROM skill_ratings
+            WHERE skill_id = ?1
+            ORDER BY created_at DESC
+            LIMIT ?2 OFFSET ?3
+            "#,
+        )
+        .bind(skill_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.db)
+        .await
+    }
         let major = parts[0]
             .parse()
             .map_err(|_| VersionError::InvalidNumber(parts[0].to_string()))?;

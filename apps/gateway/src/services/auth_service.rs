@@ -157,7 +157,17 @@ impl AuthService {
 fn hash_password(password: &str) -> Result<String, AppError> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
-    argon2
+    argon2        // Attach wallet if blockchain is enabled and a mnemonic is provided
+        if config.blockchain.enabled {
+            if let Some(ref mnemonic) = config.blockchain.agent_wallet_mnemonic {
+                let wallet_config = beebotos_agents::wallet::WalletConfig {
+                    chain_id: config.blockchain.chain_id,
+                    derivation_path_prefix: "m/44'/60'/0'/0".to_string(),
+                    default_account_index: 0,
+                    rpc_url: config.blockchain.rpc_url.clone(),
+                    default_gas_limit: 100_000,
+                    max_priority_fee_gwei: None,
+                    min_tx_interval_secs: 1,
         .hash_password(password.as_bytes(), &salt)
         .map(|h| h.to_string())
         .map_err(|e| AppError::Internal(format!("Password hashing failed: {}", e)))

@@ -82,7 +82,34 @@ impl CacheWarmer {
             warm_handle: None,
         }
     }
+                        if c.contains("email") {
+                            Some("email")
+                        } else {
+                            Some("username")
+                        }
+                    })
+                    .unwrap_or("username");
+                Err(AppError::Validation(vec![crate::error::ValidationError {
+                    field: field.to_string(),
+                    message: format!("{} already exists", field),
+                    code: "ALREADY_EXISTS".to_string(),
+                }]))
+            }
+            Err(e) => Err(AppError::database(e)),
+        }
+    }
 
+    /// Authenticate a user by username and password
+    pub async fn authenticate(
+        &self,
+        username: &str,
+        password: &str,
+    ) -> Result<AuthUserInfo, AppError> {
+        let row = sqlx::query_as::<_, UserRow>(
+            "SELECT id, username, email, password_hash, avatar, wallet_address
+             FROM users WHERE username = ?",
+        )
+        .bind(username)
     /// Start cache warmer
     ///
     /// If warm_on_startup is enabled, will immediately start warming.

@@ -30,6 +30,38 @@ pub struct AgentKernelInfo {
     pub capability_set: beebotos_kernel::capabilities::CapabilitySet,
 }
 
+                system_parts.push(rest.trim().to_string());
+            } else {
+                // 默认作为 user message
+                llm_messages.push(LLMMessage::user(content.to_string()));
+            }
+        }
+
+        let final_messages = if !system_parts.is_empty() {
+            let system_text = system_parts.join("\n\n");
+            let mut msgs = vec![LLMMessage::system(system_text)];
+            msgs.extend(llm_messages);
+            msgs
+        } else {
+            llm_messages
+        };
+
+        self.llm_service.chat(final_messages).await.map_err(|e| {
+            beebotos_agents::error::AgentError::Execution(format!("LLM call failed: {}", e))
+        })
+    }
+
+    async fn call_llm_stream(
+        &self,
+        _messages: Vec<beebotos_agents::communication::Message>,
+        _context: Option<std::collections::HashMap<String, String>>,
+    ) -> beebotos_agents::error::Result<tokio::sync::mpsc::Receiver<String>> {
+        Err(beebotos_agents::error::AgentError::Execution(
+            "Streaming not supported via gateway".into(),
+        ))
+    }
+}
+
 /// Agent service for business logic
 ///
 /// This service manages the complete agent lifecycle:

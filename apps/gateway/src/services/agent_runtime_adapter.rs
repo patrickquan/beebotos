@@ -102,6 +102,32 @@ impl AgentRuntimeAdapter {
                     agent_id: agent_id.to_string(),
                     kernel_task_id: status.kernel_task_id,
                 })
+				
+				                );
+                match self.agent_runtime.status(&agent_id).await {
+                    Ok(status) => {
+                        if status.state != gateway::AgentState::Stopped
+                            && status.state != gateway::AgentState::Error
+                        {
+                            info!(
+                                "Resolved agent {} from ChannelBindingStore ({}:{})",
+                                agent_id, platform_str, channel_id
+                            );
+                            return Ok(agent_id);
+                        }
+                        warn!(
+                            "Bound agent {} for {}:{} is in state {:?}, skipping",
+                            agent_id, platform_str, channel_id, status.state
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Bound agent {} for {}:{} not found: {}",
+                            agent_id, platform_str, channel_id, e
+                        );
+                    }
+                }
+            }
             }
         }
     }

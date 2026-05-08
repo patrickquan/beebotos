@@ -79,6 +79,17 @@ impl WebScraper {
                  Chrome/120.0.0.0 Safari/537.36",
             ),
         );
+		
+		        let link_handler =
+            self.llm
+                .as_ref()
+                .and_then(|llm| match super::LinkHandler::new(llm.clone()) {
+                    Ok(handler) => Some(Arc::new(handler)),
+                    Err(e) => {
+                        tracing::warn!("Failed to create LinkHandler: {}", e);
+                        None
+                    }
+                });
 
         let client = reqwest::Client::builder()
             .default_headers(headers)

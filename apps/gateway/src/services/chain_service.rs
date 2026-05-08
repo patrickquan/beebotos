@@ -123,6 +123,48 @@ impl ChainService {
             warn!("No wallet mnemonic configured, chain operations will be read-only");
             None
         };
+		
+sol! {
+    // AgentIdentity events
+    event AgentRegistered(bytes32 indexed agentId, address indexed owner, string did);
+    event AgentUpdated(bytes32 indexed agentId, string field);
+    event AgentDeactivated(bytes32 indexed agentId);
+    event CapabilityGranted(bytes32 indexed agentId, bytes32 capability);
+    event CapabilityRevoked(bytes32 indexed agentId, bytes32 capability);
+
+    // AgentDAO events
+    event ProposalCreated(
+        uint256 indexed proposalId,
+        address proposer,
+        address[] targets,
+        uint256[] values,
+        string[] signatures,
+        bytes[] calldatas,
+        uint256 startBlock,
+        uint256 endBlock,
+        string description
+    );
+    event VoteCast(
+        address indexed voter,
+        uint256 indexed proposalId,
+        uint8 support,
+        uint256 weight,
+        string reason
+    );
+    event ProposalExecuted(uint256 indexed proposalId);
+    event ProposalQueued(uint256 indexed proposalId, uint256 eta);
+    event ProposalCanceled(uint256 indexed proposalId);
+}
+
+/// Event parser configuration
+#[derive(Debug, Clone)]
+pub struct EventParserConfig {
+    /// AgentIdentity contract address
+    pub identity_contract: Option<String>,
+    /// AgentDAO contract address
+    pub dao_contract: Option<String>,
+}
+
 
         // Initialize chain client using dynamic dispatch
         let client: Option<Arc<dyn ChainClientTrait>> = if !config.rpc_url.is_empty() {
@@ -262,6 +304,21 @@ impl ChainService {
             did = %did,
             "Agent identity registration submitted"
         );
+        if self.config.warm_on_startup {
+            let client = Arc::clone(&self.client);
+            let config = self.config.clone();
+
+            tokio::spawn(async move {
+                info!("Starting initial cache warm");
+                let stats = Self::warm_cache(&client, &config).await;
+                info!(
+                    identities = %stats.identities_warmed,
+                    proposals = %stats.proposals_warmed,
+                    elapsed_ms = %stats.elapsed_ms,
+                    "Initial cache warm completed"
+                );
+            });
+        }
 
         Ok(tx_hash)
     }

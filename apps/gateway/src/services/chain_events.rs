@@ -85,6 +85,23 @@ pub enum EventType {
     All,
 }
 
+}
+
+impl From<&BlockchainConfig> for ChainServiceConfig {
+    fn from(config: &BlockchainConfig) -> Self {
+        // Helper to convert hex address string to Address bytes
+        let parse_address = |addr: &Option<String>| -> Option<Address> {
+            addr.as_ref().and_then(|a| {
+                let a = a.trim();
+                if a.len() >= 42 && a.starts_with("0x") {
+                    hex::decode(&a[2..])
+                        .ok()
+                        .filter(|b| b.len() == 20)
+                        .map(|b| Address::from_slice(&b))
+                } else {
+                    None
+                }
+
 /// Event filters
 #[derive(Debug, Clone, Default)]
 #[allow(dead_code)]
